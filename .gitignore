@@ -1,0 +1,9 @@
+# Python Bytecode
+__pycache__
+
+# IDE
+.vscode
+.idea
+
+# OS X
+.DS_Store
