@@ -1,5 +1,6 @@
 # Python Bytecode
 __pycache__
+**.pyc
 
 # IDE
 .vscode
