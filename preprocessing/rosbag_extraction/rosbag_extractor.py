@@ -4,6 +4,7 @@ from tqdm import tqdm
 import cv2
 from cv_bridge import CvBridge
 import numpy as np
+import pickle
 from utils.pc_utils import convert_msg_to_numpy
 
 
@@ -34,7 +35,20 @@ class RosbagExtractor:
         }
 
         # Create a dictionary to store the extracted data
-        # self.extracted_rosbag_data_dict = {}
+        self.extracted_rosbag_data_dict = {}
+
+    def pickle_data(self):
+        pickle_dir = os.path.join(self.data_folder, "pickle/")
+        if not os.path.exists(pickle_dir):
+            os.makedirs(pickle_dir)
+        pickle_file_path = os.path.join(pickle_dir,
+                                        "extracted_rosbag_data_dict.pkl")
+
+        print("Data pickling in progress...")
+        with open(pickle_file_path, 'wb') as output_pkl:
+            pickle.dump(self.extracted_rosbag_data_dict, output_pkl,
+                        pickle.HIGHEST_PROTOCOL)
+        print("Data pickled.")
 
     def extract(self, topic):
         print("Started extraction of topic {} in {}.".format(
@@ -44,13 +58,23 @@ class RosbagExtractor:
 
         if msg_type == "sensor_msgs/PointCloud2":
             print("Extracting point clouds")
-            self.extract_sensor_msgs_point_cloud_2(topic)
+            pcs, timestamps = self.extract_sensor_msgs_point_cloud_2(topic)
+            self.extracted_rosbag_data_dict[
+                self.topic_name_to_folder_name_dict[topic]] = (pcs, timestamps)
+
         elif msg_type == "sensor_msgs/Image":
             print("Extracting images")
-            self.extract_sensor_msgs_image(topic)
+            images, timestamps = self.extract_sensor_msgs_image(topic)
+            self.extracted_rosbag_data_dict[
+                self.topic_name_to_folder_name_dict[topic]] = (images,
+                                                               timestamps)
+
         elif msg_type == "tf2_msgs/TFMessage":
             print("Extracting tf2 transformations")
-            self.extract_tf2_msgs_tf_message(topic)
+            transforms_dict = self.extract_tf2_msgs_tf_message(topic)
+            self.extracted_rosbag_data_dict[
+                self.topic_name_to_folder_name_dict[topic]] = transforms_dict
+
         elif msg_type == "pilatus_can/GNSS":
             print("Extracting pilatus_can/GNSS")
             self.extract_pilatus_can_gnss(topic)
@@ -90,8 +114,8 @@ class RosbagExtractor:
                 "{}.{}\n".format(str(timestamp.secs),
                                  str(timestamp.nsecs).zfill(9))
                 for timestamp in timestamps)
-        
-        return None
+
+        return pcs, timestamps
 
     def extract_sensor_msgs_image(self, topic):
         pbar = tqdm(total=self.type_and_topic_info[1][topic].message_count,
@@ -104,6 +128,7 @@ class RosbagExtractor:
 
         counter = 0
         timestamps = []
+        images = []
         bridge = CvBridge()
 
         for _, msg, _ in self.bag.read_messages(topics=[topic]):
@@ -113,6 +138,7 @@ class RosbagExtractor:
             cv2.imwrite(os.path.join(data_dir,
                                      str(counter).zfill(8) + '.png'), image)
             timestamps.append(msg.header.stamp)
+            images.append(image)
 
             counter += 1
 
@@ -123,6 +149,8 @@ class RosbagExtractor:
                 "{}.{}\n".format(str(timestamp.secs),
                                  str(timestamp.nsecs).zfill(9))
                 for timestamp in timestamps)
+
+        return images, timestamps
 
     def extract_tf2_msgs_tf_message(self, topic):
         pbar = tqdm(total=self.type_and_topic_info[1][topic].message_count,
@@ -179,6 +207,8 @@ class RosbagExtractor:
                         transform[9],
                     ) for transform in transforms_dict[key])
 
+        return transforms_dict
+
     def extract_pilatus_can_gnss(self, topic):
         print("Not implemented.")
         pass
@@ -190,11 +220,14 @@ class RosbagExtractor:
         state = self.__dict__.copy()
         # Remove the unpicklable entries.
         del state['bag']
+        del state['type_and_topic_info']
         return state
 
     def __setstate__(self, state):
-        # Restore instance attributes 
+        # Restore instance attributes
         self.__dict__.update(state)
         # Restore the previously opened file's state. To do so, we need to
         # reopen the bag file
         self.bag = rosbag.Bag(self.rosbag_file_path)
+        self.type_and_topic_info = self.bag.get_type_and_topic_info(
+            topic_filters=None)
