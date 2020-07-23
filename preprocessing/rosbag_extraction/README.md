@@ -30,14 +30,14 @@ cv-bridge 1.13.0
 rosbag 1.14.6
 numpy 1.13.3
 
-## Usage 
+### Usage 
 ```
 python preprocessing/rosbag_extraction/main.py -h
 
 python preprocessing/rosbag_extraction/main.py -r <rosbag_file_path> 
 ```
 
-## Issues & Next Steps
+### Issues & Next Steps
 - Since for the majority of the time of a rosbag the car is standing, a filter needs to be implememented to filter out data when the car was standing still 
 - It should be possible to specify several rosbags to extract from, instead of just one at a time
 
