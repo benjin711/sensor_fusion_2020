@@ -10,12 +10,12 @@ from utils.pc_utils import convert_msg_to_numpy
 
 class RosbagExtractor:
     def __init__(self, cfg):
+        self.pickle_data_flag = cfg.pickle_data
         self.rosbag_file_path = cfg.rosbag_file_path
         self.rosbag_filename = os.path.basename(cfg.rosbag_file_path)
         self.bag = rosbag.Bag(cfg.rosbag_file_path)
         self.type_and_topic_info = self.bag.get_type_and_topic_info(
             topic_filters=None)
-        self.pickle_data_flag = False
 
         # Create a folder where the extracted data should go to
         self.data_folder = os.path.join(

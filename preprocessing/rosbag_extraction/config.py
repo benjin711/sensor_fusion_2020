@@ -2,6 +2,17 @@ import argparse
 import json
 
 
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
+
 def command_line_parser():
     parser = argparse.ArgumentParser(
         add_help=True, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -14,13 +25,13 @@ def command_line_parser():
 
     parser.add_argument('-p',
                         '--pickle_data',
-                        type=bool,
-                        default=True,
+                        type=str2bool,
+                        default=False,
                         help='Pickle the extracted data in a dictionary')
 
     parser.add_argument('-m',
                         '--moving_only',
-                        type=str,
+                        type=str2bool,
                         default=True,
                         help='Only extract the data when the car was moving')
 
