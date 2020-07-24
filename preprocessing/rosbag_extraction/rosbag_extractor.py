@@ -9,16 +9,17 @@ from utils.pc_utils import convert_msg_to_numpy
 
 
 class RosbagExtractor:
-    def __init__(self, rosbag_file_path):
-        self.rosbag_file_path = rosbag_file_path
-        self.rosbag_filename = os.path.basename(rosbag_file_path)
-        self.bag = rosbag.Bag(rosbag_file_path)
+    def __init__(self, cfg):
+        self.rosbag_file_path = cfg.rosbag_file_path
+        self.rosbag_filename = os.path.basename(cfg.rosbag_file_path)
+        self.bag = rosbag.Bag(cfg.rosbag_file_path)
         self.type_and_topic_info = self.bag.get_type_and_topic_info(
             topic_filters=None)
+        self.pickle_data_flag = False
 
         # Create a folder where the extracted data should go to
         self.data_folder = os.path.join(
-            os.path.dirname(rosbag_file_path), "../data",
+            os.path.dirname(cfg.rosbag_file_path), "../data",
             os.path.splitext(self.rosbag_filename)[0])
         if not os.path.exists(self.data_folder):
             os.makedirs(self.data_folder)
@@ -34,20 +35,27 @@ class RosbagExtractor:
             "/pilatus_can/GNSS": "gnss"
         }
 
-        # Create a dictionary to store the extracted data
-        self.extracted_rosbag_data_dict = {}
+        # Create a dictionary to correspond topic names to data types
+        self.topic_name_to_data_type_dict = {
+            "/sensors/fw_lidar/point_cloud_raw": "fw_lidar_pcs",
+            "/sensors/mrh_lidar/point_cloud_raw": "mrh_lidar_pcs",
+            "/sensors/right_camera/image_color": "right_camera_imgs",
+            "/sensors/forward_camera/image_color": "forward_camera_imgs",
+            "/sensors/left_camera/image_color": "left_camera_imgs",
+            "/tf": "transformations",
+            "/pilatus_can/GNSS": "gnss_data"
+        }
 
-    def pickle_data(self):
+    def pickle_data(self, data, topic):
         pickle_dir = os.path.join(self.data_folder, "pickle/")
         if not os.path.exists(pickle_dir):
             os.makedirs(pickle_dir)
-        pickle_file_path = os.path.join(pickle_dir,
-                                        "extracted_rosbag_data_dict.pkl")
+        pickle_file_path = os.path.join(
+            pickle_dir, self.topic_name_to_data_type_dict[topic] + ".pkl")
 
         print("Data pickling in progress...")
         with open(pickle_file_path, 'wb') as output_pkl:
-            pickle.dump(self.extracted_rosbag_data_dict, output_pkl,
-                        pickle.HIGHEST_PROTOCOL)
+            pickle.dump(data, output_pkl, pickle.HIGHEST_PROTOCOL)
         print("Data pickled.")
 
     def extract(self, topic):
@@ -59,21 +67,20 @@ class RosbagExtractor:
         if msg_type == "sensor_msgs/PointCloud2":
             print("Extracting point clouds")
             pcs, timestamps = self.extract_sensor_msgs_point_cloud_2(topic)
-            self.extracted_rosbag_data_dict[
-                self.topic_name_to_folder_name_dict[topic]] = (pcs, timestamps)
+            if self.pickle_data_flag:
+                self.pickle_data((pcs, timestamps), topic)
 
         elif msg_type == "sensor_msgs/Image":
             print("Extracting images")
             images, timestamps = self.extract_sensor_msgs_image(topic)
-            self.extracted_rosbag_data_dict[
-                self.topic_name_to_folder_name_dict[topic]] = (images,
-                                                               timestamps)
+            if self.pickle_data_flag:
+                self.pickle_data((images, timestamps), topic)
 
         elif msg_type == "tf2_msgs/TFMessage":
             print("Extracting tf2 transformations")
             transforms_dict = self.extract_tf2_msgs_tf_message(topic)
-            self.extracted_rosbag_data_dict[
-                self.topic_name_to_folder_name_dict[topic]] = transforms_dict
+            if self.pickle_data_flag:
+                self.pickle_data(transforms_dict, topic)
 
         elif msg_type == "pilatus_can/GNSS":
             print("Extracting pilatus_can/GNSS")
@@ -212,22 +219,3 @@ class RosbagExtractor:
     def extract_pilatus_can_gnss(self, topic):
         print("Not implemented.")
         pass
-
-    def __getstate__(self):
-        # Copy the object's state from self.__dict__ which contains
-        # all our instance attributes. Always use the dict.copy()
-        # method to avoid modifying the original state.
-        state = self.__dict__.copy()
-        # Remove the unpicklable entries.
-        del state['bag']
-        del state['type_and_topic_info']
-        return state
-
-    def __setstate__(self, state):
-        # Restore instance attributes
-        self.__dict__.update(state)
-        # Restore the previously opened file's state. To do so, we need to
-        # reopen the bag file
-        self.bag = rosbag.Bag(self.rosbag_file_path)
-        self.type_and_topic_info = self.bag.get_type_and_topic_info(
-            topic_filters=None)
