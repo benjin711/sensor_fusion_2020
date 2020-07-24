@@ -5,14 +5,20 @@ import cv2
 from cv_bridge import CvBridge
 import numpy as np
 import pickle
-from utils.pc_utils import convert_msg_to_numpy
+from utils.utils import convert_msg_to_numpy
+from utils.utils import get_driving_interval
 
 
 class RosbagExtractor:
     def __init__(self, cfg):
+        self.moving_only_flag = cfg.moving_only
         self.pickle_data_flag = cfg.pickle_data
         self.rosbag_file_path = cfg.rosbag_file_path
         self.rosbag_filename = os.path.basename(cfg.rosbag_file_path)
+        self.timestamp_started_driving = None
+        self.timestamp_stopped_driving = None
+
+        # Generate Bag object and extract meta data of all topics
         self.bag = rosbag.Bag(cfg.rosbag_file_path)
         self.type_and_topic_info = self.bag.get_type_and_topic_info(
             topic_filters=None)
@@ -23,6 +29,19 @@ class RosbagExtractor:
             os.path.splitext(self.rosbag_filename)[0])
         if not os.path.exists(self.data_folder):
             os.makedirs(self.data_folder)
+
+        # If the moving_only_flag is true, extract from /tf topic first by
+        # putting it at the first position
+        if cfg.moving_only:
+            if "/tf" in cfg.topics:
+                try:
+                    cfg.topics.remove("/tf")
+                except:
+                    pass
+
+                tmp_list = ["/tf"]
+                tmp_list.extend(cfg.topics)
+                cfg.topics = tmp_list
 
         # Create a dictionary to correspond topic names to folder names
         self.topic_name_to_folder_name_dict = {
@@ -181,11 +200,10 @@ class RosbagExtractor:
                     transforms_dict[key] = []
 
                 t = []
-                t.append(transform.child_frame_id)
-                t.append(transform.header.frame_id)
-                t.append("{}.{}".format(
-                    str(transform.header.stamp.secs),
-                    str(transform.header.stamp.nsecs).zfill(9)))
+                t.append(
+                    float("{}.{}".format(
+                        str(transform.header.stamp.secs),
+                        str(transform.header.stamp.nsecs).zfill(9))))
                 t.append(transform.transform.translation.x)
                 t.append(transform.transform.translation.y)
                 t.append(transform.transform.translation.z)
@@ -198,10 +216,25 @@ class RosbagExtractor:
 
         pbar.close()
 
+        # Extract timestamps when car started and stopped driving for filtering
+        if self.moving_only_flag:
+            self.timestamp_started_driving, self.timestamp_stopped_driving = get_driving_interval(
+                transforms_dict["egomotion_to_world"])
+
+            # Filter transform_dict using timestamp filter
+            for key in transforms_dict:
+                driving_interval_mask = [
+                    transform[0] > self.timestamp_started_driving
+                    and transform[0] < self.timestamp_stopped_driving
+                    for transform in transforms_dict[key]
+                ]
+                transforms_dict[key] = (np.array(
+                    transforms_dict[key])[driving_interval_mask]).tolist()
+
         for key in transforms_dict:
             with open(os.path.join(data_dir, key + '.txt'), 'w') as filehandle:
                 filehandle.writelines(
-                    "{}, {}, {}, {}, {}, {}, {}, {}, {}, {}\n".format(
+                    "{:.6f}, {}, {}, {}, {}, {}, {}, {}\n".format(
                         transform[0],
                         transform[1],
                         transform[2],
@@ -210,8 +243,6 @@ class RosbagExtractor:
                         transform[5],
                         transform[6],
                         transform[7],
-                        transform[8],
-                        transform[9],
                     ) for transform in transforms_dict[key])
 
         return transforms_dict
