@@ -8,3 +8,6 @@ __pycache__
 
 # OS X
 .DS_Store
+
+# Virtual Environment
+venv/
