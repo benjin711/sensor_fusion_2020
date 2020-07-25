@@ -4,7 +4,6 @@ from tqdm import tqdm
 import cv2
 from cv_bridge import CvBridge
 import numpy as np
-import pickle
 from utils.utils import convert_msg_to_numpy
 from utils.utils import get_driving_interval
 
@@ -12,7 +11,6 @@ from utils.utils import get_driving_interval
 class RosbagExtractor:
     def __init__(self, cfg):
         self.moving_only_flag = cfg.moving_only
-        self.pickle_data_flag = cfg.pickle_data
         self.rosbag_file_path = cfg.rosbag_file_path
         self.rosbag_filename = os.path.basename(cfg.rosbag_file_path)
         self.timestamp_started_driving = None
@@ -65,18 +63,6 @@ class RosbagExtractor:
             "/pilatus_can/GNSS": "gnss_data"
         }
 
-    def pickle_data(self, data, topic):
-        pickle_dir = os.path.join(self.data_folder, "pickle/")
-        if not os.path.exists(pickle_dir):
-            os.makedirs(pickle_dir)
-        pickle_file_path = os.path.join(
-            pickle_dir, self.topic_name_to_data_type_dict[topic] + ".pkl")
-
-        print("Data pickling in progress...")
-        with open(pickle_file_path, 'wb') as output_pkl:
-            pickle.dump(data, output_pkl, pickle.HIGHEST_PROTOCOL)
-        print("Data pickled.")
-
     def extract(self, topic):
         print("Started extraction of topic {} in {}.".format(
             topic, self.rosbag_filename))
@@ -86,20 +72,14 @@ class RosbagExtractor:
         if msg_type == "sensor_msgs/PointCloud2":
             print("Extracting point clouds")
             pcs, timestamps = self.extract_sensor_msgs_point_cloud_2(topic)
-            if self.pickle_data_flag:
-                self.pickle_data((pcs, timestamps), topic)
 
         elif msg_type == "sensor_msgs/Image":
             print("Extracting images")
             images, timestamps = self.extract_sensor_msgs_image(topic)
-            if self.pickle_data_flag:
-                self.pickle_data((images, timestamps), topic)
 
         elif msg_type == "tf2_msgs/TFMessage":
             print("Extracting tf2 transformations")
             transforms_dict = self.extract_tf2_msgs_tf_message(topic)
-            if self.pickle_data_flag:
-                self.pickle_data(transforms_dict, topic)
 
         elif msg_type == "pilatus_can/GNSS":
             print("Extracting pilatus_can/GNSS")

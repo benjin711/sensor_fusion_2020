@@ -23,12 +23,6 @@ def command_line_parser():
                         required=True,
                         help='Specify rosbag file path')
 
-    parser.add_argument('-p',
-                        '--pickle_data',
-                        type=str2bool,
-                        default=False,
-                        help='Pickle the extracted data in a dictionary')
-
     parser.add_argument('-m',
                         '--moving_only',
                         type=str2bool,
