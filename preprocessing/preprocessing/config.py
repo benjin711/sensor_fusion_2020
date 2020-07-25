@@ -17,8 +17,8 @@ def command_line_parser():
     parser = argparse.ArgumentParser(
         add_help=True, formatter_class=argparse.ArgumentDefaultsHelpFormatter, description='Preprocess image and point cloud data.')
 
-    parser.add_argument('-r',
-                        '--rosbag_data_folder_path',
+    parser.add_argument('-d',
+                        '--data_folder_path',
                         type=str,
                         required=True,
                         help='Specify rosbag data folder path')
