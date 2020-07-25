@@ -123,23 +123,28 @@ class RosbagExtractor:
 
             pbar.update(1)
 
+            timestamp = float("{}.{}".format(
+                str(msg.header.stamp.secs),
+                str(msg.header.stamp.nsecs).zfill(9)))
+            if self.moving_only_flag:
+                if timestamp < self.timestamp_started_driving or timestamp > self.timestamp_stopped_driving:
+                    continue
+
             pc = convert_msg_to_numpy(msg)
             if pc.size == 0:
                 continue
 
             np.save(os.path.join(data_dir, str(counter).zfill(8)), pc)
             pcs.append(pc)
-            timestamps.append(msg.header.stamp)
+            timestamps.append(timestamp)
 
             counter += 1
 
         pbar.close()
 
         with open(os.path.join(data_dir, 'timestamps.txt'), 'w') as filehandle:
-            filehandle.writelines(
-                "{}.{}\n".format(str(timestamp.secs),
-                                 str(timestamp.nsecs).zfill(9))
-                for timestamp in timestamps)
+            filehandle.writelines("{:.6f}\n".format(timestamp)
+                                  for timestamp in timestamps)
 
         return pcs, timestamps
 
@@ -160,10 +165,17 @@ class RosbagExtractor:
         for _, msg, _ in self.bag.read_messages(topics=[topic]):
             pbar.update(1)
 
+            timestamp = float("{}.{}".format(
+                str(msg.header.stamp.secs),
+                str(msg.header.stamp.nsecs).zfill(9)))
+            if self.moving_only_flag:
+                if timestamp < self.timestamp_started_driving or timestamp > self.timestamp_stopped_driving:
+                    continue
+
             image = bridge.imgmsg_to_cv2(msg, 'bgr8')
             cv2.imwrite(os.path.join(data_dir,
                                      str(counter).zfill(8) + '.png'), image)
-            timestamps.append(msg.header.stamp)
+            timestamps.append(timestamp)
             images.append(image)
 
             counter += 1
@@ -171,10 +183,8 @@ class RosbagExtractor:
         pbar.close()
 
         with open(os.path.join(data_dir, 'timestamps.txt'), 'w') as filehandle:
-            filehandle.writelines(
-                "{}.{}\n".format(str(timestamp.secs),
-                                 str(timestamp.nsecs).zfill(9))
-                for timestamp in timestamps)
+            filehandle.writelines("{:.6f}\n".format(timestamp)
+                                  for timestamp in timestamps)
 
         return images, timestamps
 
