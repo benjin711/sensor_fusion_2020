@@ -8,6 +8,7 @@ yapf = "*"
 
 [packages]
 opencv-python = "*"
+tqdm = "*"
 
 [requires]
 python_version = "3.6"

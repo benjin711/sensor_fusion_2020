@@ -1,14 +1,17 @@
 import os
-from utils.utils import get_camera_timestamps, timestamps_within_interval
+from utils.utils import get_camera_timestamps, timestamps_within_interval, filter_images
 import numpy as np
 
 
 class DataPreprocesser:
     def __init__(self, cfg):
         self.data_folder_path = cfg.data_folder_path
+        self.keep_orig_image_folders = cfg.keep_orig_image_folders
+
+        self.reference_timestamps = []
 
         # Constants
-        self.MIN_DTIMESTAMP_THRESHOLD = 0.01
+        self.MIN_DTIMESTAMP_THRESHOLD = 0.001
 
     def match_images(self):
         # Read in the timestamp files
@@ -16,8 +19,11 @@ class DataPreprocesser:
 
         # For every forward camera image timestamp, find the closest
         # timestamps from the left and right camera images
-        idx_triples = []
-        new_reference_timestamps = []
+        idx_triples_dict = {
+            "forward_camera": [],
+            "right_camera": [],
+            "left_camera": [],
+        }
 
         for forward_camera_timestamp_idx, forward_camera_timestamp in enumerate(
                 timestamp_arrays_dict["forward_camera"]):
@@ -49,18 +55,19 @@ class DataPreprocesser:
                     (forward_camera_timestamp, left_camera_timestamp,
                      right_camera_timestamp)):
 
-                    # Add the indices of the valid triple to a list
-                    current_idx_triple = [
-                        forward_camera_timestamp_idx,
-                        left_camera_min_dtimestamp_idx,
-                        right_camera_min_dtimestamp_idx
-                    ]
-                    idx_triples.append(current_idx_triple)
+                    # Add the indices of the valid triple
+                    idx_triples_dict["forward_camera"].append(
+                        forward_camera_timestamp_idx)
+                    idx_triples_dict["right_camera"].append(
+                        right_camera_min_dtimestamp_idx)
+                    idx_triples_dict["left_camera"].append(
+                        left_camera_min_dtimestamp_idx)
 
-                    new_reference_timestamps.append(
+                    self.reference_timestamps.append(
                         np.mean([
                             forward_camera_timestamp, left_camera_timestamp,
                             right_camera_timestamp
                         ]))
 
-        print("done")
+        filter_images(self.data_folder_path, idx_triples_dict,
+                      self.reference_timestamps, self.keep_orig_image_folders)
