@@ -1,5 +1,6 @@
 # Python Bytecode
 __pycache__
+**.pyc
 
 # IDE
 .vscode
@@ -7,3 +8,6 @@ __pycache__
 
 # OS X
 .DS_Store
+
+# Virtual Environment
+venv/
