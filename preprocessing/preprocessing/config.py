@@ -41,6 +41,13 @@ def command_line_parser():
         'Run algorithm to match images according to their timestamps to triplets'
     )
 
+    parser.add_argument(
+        '-p',
+        '--perfect_data',
+        dest='perfect_data',
+        action='store_true',
+        help='Discard timestamps when at least one camera failed ')
+
     cfg = parser.parse_args()
 
     return cfg
