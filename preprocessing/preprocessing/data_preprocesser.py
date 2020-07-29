@@ -187,12 +187,11 @@ class DataPreprocesser:
 
         self.filter_images_2(indices_dict)
 
-    @staticmethod
     def filter_images_1(self, indices_dict):
         for key in indices_dict:
             print("Filtering images in folder {}".format(key))
-            src_image_folder_path = os.path.join(data_folder_path, key)
-            dst_image_folder_path = os.path.join(data_folder_path,
+            src_image_folder_path = os.path.join(self.data_folder_path, key)
+            dst_image_folder_path = os.path.join(self.data_folder_path,
                                                  key + "_filtered")
 
             # Create a filtered folder to copy the correct images to
