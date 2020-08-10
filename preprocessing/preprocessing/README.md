@@ -1,12 +1,12 @@
 ## Data Processing Tools
 
 ### Done
-- Cluster images from the three cameras into triples with the (approximately) same timestamp. Add black images to triples when one of the cameras failed to capture an image. 
+- Cluster images from the three cameras into triples with the same timestamp. Add black images to triples when one of the cameras failed to capture an image. 
 
 ### Todos
 - Find the closest point clouds from mrh and fw lidar timestamp-wise to every image triple
-- Do egomotion compensation of the point clouds into a yet to defined frame at the timestamp of the image triple
-- Convert the point cloud to cylindrical coordinates
+- Do egomotion compensation of the point clouds with reference to the timestamp of the image triple
+- Convert the point cloud to their individual frames (fw_lidar, mrh_lidar) to the cylindrical coordinate frame
 - Convert the images to the yet to be defined frame and convert them to cylindrical coordinates 
 
 ### Usage
