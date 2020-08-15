@@ -25,6 +25,7 @@ def command_line_parser():
 
     parser.add_argument('-m',
                         '--moving_only',
+                        default=True,
                         type=str2bool,
                         help='Only extract the data when the car was moving')
 

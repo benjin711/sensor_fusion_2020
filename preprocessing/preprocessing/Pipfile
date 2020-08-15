@@ -9,6 +9,7 @@ yapf = "*"
 [packages]
 opencv-python = "*"
 tqdm = "*"
+scipy = "*"
 
 [requires]
 python_version = "3.6"

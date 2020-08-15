@@ -27,18 +27,17 @@ def command_line_parser():
 
     parser.add_argument(
         '-k',
-        '--keep_orig_image_folders',
-        dest='keep_orig_image_folders',
+        '--keep_orig_data_folders',
+        dest='keep_orig_data_folders',
         action='store_true',
-        help='Keep the original image data (not grouped by timestamp)')
+        help='Keep the original data folders (not grouped by timestamp)')
 
     parser.add_argument(
-        '-m',
-        '--match_images',
-        dest='match_images',
+        '--match_data',
+        dest='match_data',
         action='store_true',
         help=
-        'Run algorithm to match images according to their timestamps to triplets'
+        'Run algorithm to match images and point clouds according to their timestamps to quintests'
     )
 
     parser.add_argument(

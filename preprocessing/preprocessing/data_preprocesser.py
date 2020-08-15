@@ -1,12 +1,13 @@
 import os
 from utils.utils import *
 import numpy as np
+from static_transforms import *
 
 
 class DataPreprocesser:
     def __init__(self, cfg):
         self.data_folder_path = cfg.data_folder_path
-        self.keep_orig_image_folders = cfg.keep_orig_image_folders
+        self.keep_orig_data_folders = cfg.keep_orig_data_folders
         self.height, self.width, _ = get_image_size(self.data_folder_path)
 
         self.reference_timestamps = []
@@ -26,6 +27,12 @@ class DataPreprocesser:
         }
 
     def match_images_1(self):
+        """
+        Matches triples of images with the same time stamp. This function 
+        makes sure that images with the same time stamp also have the 
+        same index. Unlike match_images_2, this function discards a time
+        stamp when not all images are available.
+        """
         # Read in the timestamp files
         timestamp_arrays_dict = get_camera_timestamps(self.data_folder_path)
 
@@ -84,6 +91,12 @@ class DataPreprocesser:
         self.filter_images_1(indices_dict)
 
     def match_images_2(self):
+        """
+        Matches triples of images with the same time stamp. This function 
+        makes sure that images with the same time stamp also have the 
+        same index. This function includes a black image whenever an image
+        is missing for a specific time stamp.
+        """
 
         # Read in the timestamp files
         timestamp_arrays_dict = get_camera_timestamps(self.data_folder_path)
@@ -188,6 +201,10 @@ class DataPreprocesser:
         self.filter_images_2(indices_dict)
 
     def filter_images_1(self, indices_dict):
+        """
+        Creates a folder for each camera and makes sure that
+        images with the same index correspond to the same timestamp.
+        """
         for key in indices_dict:
             print("Filtering images in folder {}".format(key))
             src_image_folder_path = os.path.join(self.data_folder_path, key)
@@ -195,8 +212,15 @@ class DataPreprocesser:
                                                  key + "_filtered")
 
             # Create a filtered folder to copy the correct images to
-            if not os.path.exists(dst_image_folder_path):
-                os.makedirs(dst_image_folder_path)
+            if os.path.exists(dst_image_folder_path):
+                print(
+                    "The folder {}_filtered exist already indicating that the data has already been matched!"
+                    .format(key))
+                print(
+                    "{}_filtered will be removed and the data will be rematched."
+                    .format(key))
+                shutil.rmtree(dst_image_folder_path)
+            os.makedirs(dst_image_folder_path)
 
             # Get all files in a list and remove timestamp.txt
             filenames = []
@@ -225,11 +249,16 @@ class DataPreprocesser:
             write_reference_timestamps(dst_image_folder_path,
                                        self.reference_timestamps)
 
-            if not self.keep_orig_image_folders:
+            if not self.keep_orig_data_folders:
                 shutil.rmtree(src_image_folder_path)
                 os.rename(dst_image_folder_path, src_image_folder_path)
 
     def filter_images_2(self, indices_dict):
+        """
+        Creates a folder for each camera and makes sure that
+        images with the same index correspond to the same timestamp.
+        Additionally, this function adds dummy images.
+        """
         for key in indices_dict:
             print("Filtering images in folder {}".format(key))
             src_image_folder_path = os.path.join(self.data_folder_path, key)
@@ -237,8 +266,15 @@ class DataPreprocesser:
                                                  key + "_filtered")
 
             # Create a filtered folder to copy the correct images to
-            if not os.path.exists(dst_image_folder_path):
-                os.makedirs(dst_image_folder_path)
+            if os.path.exists(dst_image_folder_path):
+                print(
+                    "The folder {}_filtered exist already indicating that the data has already been matched!"
+                    .format(key))
+                print(
+                    "{}_filtered will be removed and the data will be rematched."
+                    .format(key))
+                shutil.rmtree(dst_image_folder_path)
+            os.makedirs(dst_image_folder_path)
 
             # Get all files in a list and remove timestamp.txt
             filenames = []
@@ -277,6 +313,138 @@ class DataPreprocesser:
             write_reference_timestamps(dst_image_folder_path,
                                        self.reference_timestamps)
 
-            if not self.keep_orig_image_folders:
+            if not self.keep_orig_data_folders:
                 shutil.rmtree(src_image_folder_path)
                 os.rename(dst_image_folder_path, src_image_folder_path)
+
+    def match_point_clouds(self):
+        """
+        Matches the timewise closest point cloud to each image triple. The result is
+        that images and point clouds with the same index in their folders go together.
+        """
+        # Read in the timestamp files
+        timestamp_arrays_dict = get_lidar_timestamps(self.data_folder_path)
+
+        indices_dict = {}
+        # Initialization
+        for key in timestamp_arrays_dict.keys():
+            indices_dict[key] = []
+
+        for key, pc_timestamps in timestamp_arrays_dict.items():
+
+            for ref_timestamp in self.reference_timestamps:
+                # The pc_timestamps are the timestamps of the start of the
+                # recording of a point cloud. Instead of taking this time
+                # stamp, we add 0.05s to approximate the mean time stamp
+                # of all the points in the point cloud
+                timediff = (pc_timestamps + 0.05) - ref_timestamp
+                idx = np.abs(timediff).argmin()
+
+                if np.abs(timediff[idx]) > 0.1:
+                    indices_dict[key].append(-1)
+                else:
+                    indices_dict[key].append(idx)
+
+        self.filter_point_clouds(indices_dict)
+
+    def filter_point_clouds(self, indices_dict):
+        """
+        Creates a folder for each lidar and makes sure that
+        point clouds with the same index correspond to the same timestamp.
+        The images should be matched before to get the reference timestamps.
+        Additionally, this function adds empty point clouds when there was
+        not point cloud matching a reference time stamp.
+        """
+        for key in indices_dict:
+            print("Filtering point clouds in folder {}".format(key))
+            src_point_cloud_folder_path = os.path.join(self.data_folder_path,
+                                                       key)
+            dst_point_cloud_folder_path = os.path.join(self.data_folder_path,
+                                                       key + "_filtered")
+
+            # Create a filtered folder to copy the correct point clouds to
+            if os.path.exists(dst_point_cloud_folder_path):
+                print(
+                    "The folder {}_filtered exist already indicating that the data has already been matched!"
+                    .format(key))
+                print(
+                    "{}_filtered will be removed and the data will be rematched."
+                    .format(key))
+                shutil.rmtree(dst_point_cloud_folder_path)
+            os.makedirs(dst_point_cloud_folder_path)
+
+            # Get all files in a list and remove timestamp.txt
+            filenames = []
+            for (_, _,
+                 current_filenames) in os.walk(src_point_cloud_folder_path):
+                filenames.extend(current_filenames)
+                break
+            filenames.remove("timestamps.txt")
+
+            # Find the format that the point clouds are stored in [".npy", ".bin"]
+            _, extension = os.path.splitext(filenames[0])
+
+            # Make sure filenames are sorted in ascending order
+            filenames.sort()
+
+            # For every idx copy the corresponding file to the new folder and name it according to the current idx in for loop
+            pbar = tqdm(total=len(indices_dict[key]), desc=key)
+            for idx, point_cloud_idx in enumerate(indices_dict[key]):
+                pbar.update(1)
+                if point_cloud_idx != -1:
+                    src_point_cloud_filepath = os.path.join(
+                        src_point_cloud_folder_path,
+                        filenames[point_cloud_idx])
+                    dst_point_cloud_filepath = os.path.join(
+                        dst_point_cloud_folder_path,
+                        str(idx).zfill(8) + "." + extension)
+
+                    shutil.copy(src_point_cloud_filepath,
+                                dst_point_cloud_filepath)
+
+                    self.egomotion_compensation(dst_point_cloud_filepath, key,
+                                                self.reference_timestamps[idx])
+                else:
+                    # Create an empty point cloud
+                    dst_point_cloud_filepath = os.path.join(
+                        dst_point_cloud_folder_path,
+                        str(idx).zfill(8) + "." + extension)
+
+                    with open(dst_point_cloud_filepath, 'w'):
+                        pass
+
+            pbar.close()
+
+            write_reference_timestamps(dst_point_cloud_folder_path,
+                                       self.reference_timestamps)
+
+            if not self.keep_orig_data_folders:
+                shutil.rmtree(src_point_cloud_folder_path)
+                os.rename(dst_point_cloud_folder_path,
+                          src_point_cloud_folder_path)
+
+    def egomotion_compensation(self, point_cloud_file, src_frame,
+                               reference_timestamp):
+        """
+        Transforms points from fw_lidar or mrh_lidar frame to the egomotion frame
+        at the time of the reference_timestamp
+        """
+        point_cloud = read_point_cloud(point_cloud_file)
+
+        T_fw_mrh = read_static_transformation("fw_lidar_to_mrh_lidar")
+        T_mrh_ego = read_static_transformation("mrh_lidar_to_egomotion")
+
+        ego_wor_transformations = read_dynamic_transformation(
+            "egomotion_to_world", self.data_folder_path)
+
+        if src_frame == 'fw_lidar':
+            for idx in range(point_cloud.shape[0]):
+                point = point_cloud[idx]
+                # T_fw_mrh * T_mrh_ego * T_ego_wor(point_time) * T_wor_ego(ref_time)
+
+                # Function to get T_ego_wor(point_time) from ego_wor_
+
+        elif src_frame == 'mrh_lidar':
+            pass
+        else:
+            print("Source frame not supported.")
