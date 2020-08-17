@@ -2,6 +2,9 @@ import os
 from utils.utils import *
 import numpy as np
 from static_transforms import *
+from scipy.spatial.transform import Rotation as R
+from scipy.spatial.transform import Slerp
+from scipy import interpolate
 
 
 class DataPreprocesser:
@@ -397,7 +400,7 @@ class DataPreprocesser:
                         filenames[point_cloud_idx])
                     dst_point_cloud_filepath = os.path.join(
                         dst_point_cloud_folder_path,
-                        str(idx).zfill(8) + "." + extension)
+                        str(idx).zfill(8) + extension)
 
                     shutil.copy(src_point_cloud_filepath,
                                 dst_point_cloud_filepath)
@@ -408,7 +411,7 @@ class DataPreprocesser:
                     # Create an empty point cloud
                     dst_point_cloud_filepath = os.path.join(
                         dst_point_cloud_folder_path,
-                        str(idx).zfill(8) + "." + extension)
+                        str(idx).zfill(8) + extension)
 
                     with open(dst_point_cloud_filepath, 'w'):
                         pass
@@ -437,14 +440,55 @@ class DataPreprocesser:
         ego_wor_transformations = read_dynamic_transformation(
             "egomotion_to_world", self.data_folder_path)
 
-        if src_frame == 'fw_lidar':
-            for idx in range(point_cloud.shape[0]):
-                point = point_cloud[idx]
-                # T_fw_mrh * T_mrh_ego * T_ego_wor(point_time) * T_wor_ego(ref_time)
+        # Use slerp for interpolating between rotations and linear interpolation for translations
+        key_rots = R.from_quat(ego_wor_transformations[:, 4:8])
+        key_times = ego_wor_transformations[:, 0]
+        R_slerp = Slerp(key_times, key_rots)
+        t_interpolator = interpolate.interp1d(key_times,
+                                              ego_wor_transformations[:, 1:4],
+                                              axis=0)
 
-                # Function to get T_ego_wor(point_time) from ego_wor_
+        T_ego_wor = np.zeros((4, 4))
+        T_ego_wor[:3, :3] = R_slerp(reference_timestamp).as_matrix()
+        T_ego_wor[:3, 3] = t_interpolator(reference_timestamp)
+        T_ego_wor[3, 3] = 1
+        T_wor_ego = np.linalg.inv(T_ego_wor)
+
+        if src_frame == 'fw_lidar':
+            # Transform each point from fw_lidar frame to the world frame
+            # and then back to the egomotion frame at reference time
+            T_fw_ego = T_mrh_ego @ T_fw_mrh
+            for idx in range(point_cloud.shape[0]):
+                p_xyz = point_cloud[idx][:3]
+                p_timestamp = point_cloud[idx][4]
+
+                T_ego_wor[:3, :3] = R_slerp(p_timestamp).as_matrix()
+                T_ego_wor[:3, 3] = t_interpolator(p_timestamp)
+                T_ego_wor[3, 3] = 1
+
+                p_xyz_new = T_wor_ego @ T_ego_wor @ T_fw_ego @ np.append(
+                    p_xyz, 1)
+                point_cloud[idx][:3] = p_xyz_new[:3]
 
         elif src_frame == 'mrh_lidar':
-            pass
+            # Transform each point from mrh_lidar frame to the world frame
+            # and then back to the egomotion frame at reference time
+            for idx in range(point_cloud.shape[0]):
+                p_xyz = point_cloud[idx][:3]
+                p_timestamp = point_cloud[idx][4]
+
+                T_ego_wor[:3, :3] = R_slerp(p_timestamp).as_matrix()
+                T_ego_wor[:3, 3] = t_interpolator(p_timestamp)
+                T_ego_wor[3, 3] = 1
+
+                p_xyz_new = T_wor_ego @ T_ego_wor @ T_mrh_ego @ np.append(
+                    p_xyz, 1)
+                point_cloud[idx][:3] = p_xyz_new[:3]
+
         else:
             print("Source frame not supported.")
+
+        # Visualize point cloud to make sure it doesn't look like crap
+
+        # Write the point cloud back to file
+        write_point_cloud(point_cloud_file, point_cloud)

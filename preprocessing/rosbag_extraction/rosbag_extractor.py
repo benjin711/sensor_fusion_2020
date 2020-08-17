@@ -5,8 +5,7 @@ import cv2
 from cv_bridge import CvBridge
 import numpy as np
 import shutil
-from utils.utils import convert_msg_to_numpy
-from utils.utils import get_driving_interval
+from utils.utils import *
 
 
 class RosbagExtractor:
@@ -130,15 +129,10 @@ class RosbagExtractor:
             if pc.size == 0:
                 continue
 
-            if self.point_cloud_file_format == 'npy':
-                np.save(os.path.join(data_dir, str(counter).zfill(8)), pc)
-            elif self.point_cloud_file_format == 'bin':
-                pc.tofile(
-                    os.path.join(data_dir,
-                                 str(counter).zfill(8) + '.bin'))
-            else:
-                print(
-                    "Saving in specified point cloud format is not possible.")
+            file_path = os.path.join(
+                data_dir,
+                str(counter).zfill(8)) + "." + self.point_cloud_file_format
+            write_point_cloud(file_path, pc)
 
             pcs.append(pc)
             timestamps.append(timestamp)

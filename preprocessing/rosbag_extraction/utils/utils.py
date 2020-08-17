@@ -32,3 +32,13 @@ def get_driving_interval(egomotion_to_world_transform):
     end_timestamp = timestamps[-1 - end_idx]
 
     return start_timestamp, end_timestamp
+
+
+def write_point_cloud(file_path, point_cloud):
+    _, ext = os.path.splitext(file_path)
+    if ext == '.npy':
+        np.save(file_path, point_cloud)
+    elif ext == '.bin':
+        point_cloud.tofile(file_path)
+    else:
+        print("Saving in specified point cloud format is not possible.")

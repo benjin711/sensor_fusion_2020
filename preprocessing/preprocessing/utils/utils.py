@@ -91,6 +91,16 @@ def read_point_cloud(point_cloud_file):
     return point_cloud
 
 
+def write_point_cloud(point_cloud_file, point_cloud):
+    _, ext = os.path.splitext(point_cloud_file)
+    if ext == '.npy':
+        np.save(point_cloud_file, point_cloud)
+    elif ext == '.bin':
+        point_cloud.tofile(point_cloud_file)
+    else:
+        print("Saving in specified point cloud format is not possible.")
+
+
 def read_static_transformation(transform):
     if transform == "fw_lidar_to_mrh_lidar":
         yaw = fw_lidar_to_mrh_lidar[20200726111500]['yaw']
