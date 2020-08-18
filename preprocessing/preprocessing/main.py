@@ -4,10 +4,9 @@ import pickle
 
 
 def main(cfg):
-    # data_preprocesser_instance = DataPreprocesser(cfg)
-
     # Match images to triplets and generate the corresponding reference timestamps
     # Then match point clouds to the triplets to create quintuples
+    # data_preprocesser_instance = DataPreprocesser(cfg)
     # if cfg.match_data:
     #     if cfg.perfect_data:
     #         data_preprocesser_instance.match_images_1()

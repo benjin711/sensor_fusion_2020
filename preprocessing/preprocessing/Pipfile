@@ -10,6 +10,7 @@ yapf = "*"
 opencv-python = "*"
 tqdm = "*"
 scipy = "*"
+open3d = "*"
 
 [requires]
 python_version = "3.6"

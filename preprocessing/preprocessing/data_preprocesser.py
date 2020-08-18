@@ -1,4 +1,5 @@
 import os
+from utils.egomotion_compensator import *
 from utils.utils import *
 import numpy as np
 from static_transforms import *
@@ -14,6 +15,10 @@ class DataPreprocesser:
         self.height, self.width, _ = get_image_size(self.data_folder_path)
 
         self.reference_timestamps = []
+
+        # Point cloud motion compensation
+        self.egomotion_compensator = EgomotionCompensator(
+            self.data_folder_path)
 
         # Constants
         self.MAX_DTIMESTAMP_THRESHOLD = 0.001
@@ -405,8 +410,9 @@ class DataPreprocesser:
                     shutil.copy(src_point_cloud_filepath,
                                 dst_point_cloud_filepath)
 
-                    self.egomotion_compensation(dst_point_cloud_filepath, key,
-                                                self.reference_timestamps[idx])
+                    self.egomotion_compensator.egomotion_compensation(
+                        dst_point_cloud_filepath, key,
+                        self.reference_timestamps[idx])
                 else:
                     # Create an empty point cloud
                     dst_point_cloud_filepath = os.path.join(
@@ -425,70 +431,3 @@ class DataPreprocesser:
                 shutil.rmtree(src_point_cloud_folder_path)
                 os.rename(dst_point_cloud_folder_path,
                           src_point_cloud_folder_path)
-
-    def egomotion_compensation(self, point_cloud_file, src_frame,
-                               reference_timestamp):
-        """
-        Transforms points from fw_lidar or mrh_lidar frame to the egomotion frame
-        at the time of the reference_timestamp
-        """
-        point_cloud = read_point_cloud(point_cloud_file)
-
-        T_fw_mrh = read_static_transformation("fw_lidar_to_mrh_lidar")
-        T_mrh_ego = read_static_transformation("mrh_lidar_to_egomotion")
-
-        ego_wor_transformations = read_dynamic_transformation(
-            "egomotion_to_world", self.data_folder_path)
-
-        # Use slerp for interpolating between rotations and linear interpolation for translations
-        key_rots = R.from_quat(ego_wor_transformations[:, 4:8])
-        key_times = ego_wor_transformations[:, 0]
-        R_slerp = Slerp(key_times, key_rots)
-        t_interpolator = interpolate.interp1d(key_times,
-                                              ego_wor_transformations[:, 1:4],
-                                              axis=0)
-
-        T_ego_wor = np.zeros((4, 4))
-        T_ego_wor[:3, :3] = R_slerp(reference_timestamp).as_matrix()
-        T_ego_wor[:3, 3] = t_interpolator(reference_timestamp)
-        T_ego_wor[3, 3] = 1
-        T_wor_ego = np.linalg.inv(T_ego_wor)
-
-        if src_frame == 'fw_lidar':
-            # Transform each point from fw_lidar frame to the world frame
-            # and then back to the egomotion frame at reference time
-            T_fw_ego = T_mrh_ego @ T_fw_mrh
-            for idx in range(point_cloud.shape[0]):
-                p_xyz = point_cloud[idx][:3]
-                p_timestamp = point_cloud[idx][4]
-
-                T_ego_wor[:3, :3] = R_slerp(p_timestamp).as_matrix()
-                T_ego_wor[:3, 3] = t_interpolator(p_timestamp)
-                T_ego_wor[3, 3] = 1
-
-                p_xyz_new = T_wor_ego @ T_ego_wor @ T_fw_ego @ np.append(
-                    p_xyz, 1)
-                point_cloud[idx][:3] = p_xyz_new[:3]
-
-        elif src_frame == 'mrh_lidar':
-            # Transform each point from mrh_lidar frame to the world frame
-            # and then back to the egomotion frame at reference time
-            for idx in range(point_cloud.shape[0]):
-                p_xyz = point_cloud[idx][:3]
-                p_timestamp = point_cloud[idx][4]
-
-                T_ego_wor[:3, :3] = R_slerp(p_timestamp).as_matrix()
-                T_ego_wor[:3, 3] = t_interpolator(p_timestamp)
-                T_ego_wor[3, 3] = 1
-
-                p_xyz_new = T_wor_ego @ T_ego_wor @ T_mrh_ego @ np.append(
-                    p_xyz, 1)
-                point_cloud[idx][:3] = p_xyz_new[:3]
-
-        else:
-            print("Source frame not supported.")
-
-        # Visualize point cloud to make sure it doesn't look like crap
-
-        # Write the point cloud back to file
-        write_point_cloud(point_cloud_file, point_cloud)
