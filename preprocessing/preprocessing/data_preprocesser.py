@@ -2,7 +2,7 @@ import os
 from utils.egomotion_compensator import *
 from utils.utils import *
 import numpy as np
-from static_transforms import *
+from utils.static_transforms import *
 from scipy.spatial.transform import Rotation as R
 from scipy.spatial.transform import Slerp
 from scipy import interpolate

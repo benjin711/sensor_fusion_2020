@@ -77,7 +77,5 @@ class EgomotionCompensator:
         else:
             print("Source frame not supported.")
 
-        # Visualize point cloud to make sure it doesn't look like crap
-
         # Write the point cloud back to file
         write_point_cloud(point_cloud_file, point_cloud)

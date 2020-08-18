@@ -4,7 +4,7 @@ import cv2
 import shutil
 from tqdm import tqdm
 import sys
-from static_transforms import *
+from utils.static_transforms import *
 from scipy.spatial.transform import Rotation as R
 
 
