@@ -5,6 +5,8 @@ import cv2
 from cv_bridge import CvBridge
 import numpy as np
 import shutil
+from pyproj import Proj
+
 from utils.utils import convert_msg_to_numpy
 from utils.utils import get_driving_interval
 
@@ -263,5 +265,42 @@ class RosbagExtractor:
         return transforms_dict
 
     def extract_pilatus_can_gnss(self, topic):
-        print("Not implemented.")
-        pass
+        pbar = tqdm(total=self.type_and_topic_info[1][topic].message_count,
+                    desc=topic)
+
+        data_dir = os.path.join(self.data_folder,
+                                self.topic_name_to_folder_name_dict[topic])
+        if not os.path.exists(data_dir):
+            os.makedirs(data_dir)
+
+        proj = Proj(proj='utm', zone=32, ellps='WGS84', preserve_units=False)
+        counter = 0
+        timestamps = []
+        poses = []
+
+        for _, msg, _ in self.bag.read_messages(topics=[topic]):
+            pbar.update(1)
+
+            timestamp = float("{}.{}".format(
+                str(msg.header.stamp.secs),
+                str(msg.header.stamp.nsecs).zfill(9)))
+            if self.moving_only_flag:
+                if timestamp < self.timestamp_started_driving or timestamp > self.timestamp_stopped_driving:
+                    continue
+
+            print(msg)
+            # TODO: understand and extract gnss msg contents
+            # TODO: get orientation of the vehicle also
+            # lat, long = msg. ....
+            projection = proj(float(row[2]), float(row[1]))
+            curr_pose = [projection[0], projection[1]]
+            poses.append(curr_pose)
+            counter += 1
+
+        pbar.close()
+
+        with open(os.path.join(data_dir, 'timestamps.txt'), 'w') as filehandle:
+            filehandle.writelines("{:.6f}\n".format(timestamp)
+                                  for timestamp in timestamps)
+
+        return poses, timestamps
