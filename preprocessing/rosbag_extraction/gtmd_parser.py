@@ -1,5 +1,6 @@
 from pyproj import Proj
 import csv
+import numpy as np
 from matplotlib import pyplot as plt
 
 
@@ -12,6 +13,7 @@ def parse_gtmd_csv(input_path, output_path='./gtmd_output.csv', plot=False):
 
     :param input_path: path (string) to input csv
     :param output_path: path (string) to output csv
+    :return cone_pos_array: numpy array of cone xy positions
     """
 
     proj = Proj(proj='utm', zone=32, ellps='WGS84', preserve_units=False)
@@ -45,3 +47,6 @@ def parse_gtmd_csv(input_path, output_path='./gtmd_output.csv', plot=False):
         plt.xlabel('X-Position')
         plt.ylabel('Y-Position')
         plt.show()
+
+    xy_arr = np.asarray([x_arr, y_arr])
+    return xy_arr
