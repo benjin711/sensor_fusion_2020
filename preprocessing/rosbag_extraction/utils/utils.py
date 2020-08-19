@@ -6,7 +6,7 @@ def convert_msg_to_numpy(pc_msg):
     pc = []
     for point in pc2.read_points(pc_msg, skip_nans=True):
         pc.append(point)
-    return np.array(pc, dtype='float32')
+    return np.array(pc, dtype=np.float64)
 
 
 def get_driving_interval(egomotion_to_world_transform):
