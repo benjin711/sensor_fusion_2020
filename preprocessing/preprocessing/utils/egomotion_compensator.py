@@ -13,6 +13,9 @@ class EgomotionCompensator:
         self.T_fw_mrh = read_static_transformation("fw_lidar_to_mrh_lidar")
         self.T_mrh_ego = read_static_transformation("mrh_lidar_to_egomotion")
 
+        self.T_mrh_fw = np.linalg.inv(self.T_fw_mrh)
+        self.T_ego_mrh = np.linalg.inv(self.T_mrh_ego)
+
         ego_wor_transformations = read_dynamic_transformation(
             "egomotion_to_world", data_folder_path)
 
@@ -43,7 +46,7 @@ class EgomotionCompensator:
 
         if src_frame == 'fw_lidar':
             # Transform each point from fw_lidar frame to the world frame
-            # and then back to the egomotion frame at reference time
+            # and then back to the mrh frame at reference time
             T_fw_ego = self.T_mrh_ego @ self.T_fw_mrh
             for idx in range(point_cloud.shape[0]):
                 p_xyz = point_cloud[idx][:3]
@@ -54,13 +57,13 @@ class EgomotionCompensator:
                 T_ego_wor[:3, 3] = self.t_interpolator_ego_wor(p_timestamp)
                 T_ego_wor[3, 3] = 1
 
-                p_xyz_new = T_wor_ego @ T_ego_wor @ T_fw_ego @ np.append(
+                p_xyz_new = self.T_ego_mrh @ T_wor_ego @ T_ego_wor @ T_fw_ego @ np.append(
                     p_xyz, 1)
                 point_cloud[idx][:3] = p_xyz_new[:3]
 
         elif src_frame == 'mrh_lidar':
             # Transform each point from mrh_lidar frame to the world frame
-            # and then back to the egomotion frame at reference time
+            # and then back to the mrh frame at reference time
             for idx in range(point_cloud.shape[0]):
                 p_xyz = point_cloud[idx][:3]
                 p_timestamp = point_cloud[idx][4]
@@ -70,7 +73,7 @@ class EgomotionCompensator:
                 T_ego_wor[:3, 3] = self.t_interpolator_ego_wor(p_timestamp)
                 T_ego_wor[3, 3] = 1
 
-                p_xyz_new = T_wor_ego @ T_ego_wor @ self.T_mrh_ego @ np.append(
+                p_xyz_new = self.T_ego_mrh @ T_wor_ego @ T_ego_wor @ self.T_mrh_ego @ np.append(
                     p_xyz, 1)
                 point_cloud[idx][:3] = p_xyz_new[:3]
 
