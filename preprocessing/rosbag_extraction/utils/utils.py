@@ -1,5 +1,6 @@
 import sensor_msgs.point_cloud2 as pc2
 import numpy as np
+import os
 
 
 def convert_msg_to_numpy(pc_msg):
