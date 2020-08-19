@@ -101,7 +101,7 @@ class RosbagExtractor:
 
         elif msg_type == "pilatus_can/GNSS":
             print("Extracting pilatus_can/GNSS")
-            self.extract_pilatus_can_gnss(topic)
+            poses, timestamps = self.extract_pilatus_can_gnss(topic)
 
     def extract_sensor_msgs_point_cloud_2(self, topic):
         pbar = tqdm(total=self.type_and_topic_info[1][topic].message_count,
@@ -288,7 +288,6 @@ class RosbagExtractor:
                 if timestamp < self.timestamp_started_driving or timestamp > self.timestamp_stopped_driving:
                     continue
 
-            # TODO: get orientation of the vehicle also
             lat = msg.RTK_latitude
             long = msg.RTK_longitude
             roll = msg.INS_roll
@@ -296,12 +295,19 @@ class RosbagExtractor:
             heading = msg.dual_heading
 
             projection = proj(long, lat)
-            curr_pose = [projection[0], projection[1]]
+            curr_pose = [projection[0], projection[1], pitch, roll, heading]
             poses.append(curr_pose)
             timestamps.append(timestamp)
             counter += 1
 
         pbar.close()
+
+        print(self.moving_only_flag)
+        vehicle_pos = np.asarray(poses)
+        print(vehicle_pos.shape)
+        print(np.max(vehicle_pos[:, 0]))
+        print(np.min(vehicle_pos[:, 1]))
+        np.save('vehicle_pos.npy', vehicle_pos)
 
         with open(os.path.join(data_dir, 'timestamps.txt'), 'w') as filehandle:
             filehandle.writelines("{:.6f}\n".format(timestamp)
