@@ -302,13 +302,6 @@ class RosbagExtractor:
 
         pbar.close()
 
-        print(self.moving_only_flag)
-        vehicle_pos = np.asarray(poses)
-        print(vehicle_pos.shape)
-        print(np.max(vehicle_pos[:, 0]))
-        print(np.min(vehicle_pos[:, 1]))
-        np.save('vehicle_pos.npy', vehicle_pos)
-
         with open(os.path.join(data_dir, 'timestamps.txt'), 'w') as filehandle:
             filehandle.writelines("{:.6f}\n".format(timestamp)
                                   for timestamp in timestamps)
