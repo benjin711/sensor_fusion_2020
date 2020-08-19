@@ -283,13 +283,17 @@ class RosbagExtractor:
                 if timestamp < self.timestamp_started_driving or timestamp > self.timestamp_stopped_driving:
                     continue
 
-            print(msg)
-            # TODO: understand and extract gnss msg contents
             # TODO: get orientation of the vehicle also
-            # lat, long = msg. ....
-            projection = proj(float(row[2]), float(row[1]))
+            lat = msg.RTK_latitude
+            long = msg.RTK_longitude
+            roll = msg.INS_roll
+            pitch = msg.INS_pitch
+            heading = msg.dual_heading
+
+            projection = proj(long, lat)
             curr_pose = [projection[0], projection[1]]
             poses.append(curr_pose)
+            timestamps.append(timestamp)
             counter += 1
 
         pbar.close()
