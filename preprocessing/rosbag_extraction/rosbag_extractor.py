@@ -86,22 +86,26 @@ class RosbagExtractor:
 
         msg_type = self.type_and_topic_info[1][str(topic)].msg_type
 
-        if msg_type == "sensor_msgs/PointCloud2":
-            print("Extracting point clouds, {} format".format(
-                self.point_cloud_file_format))
-            pcs, timestamps = self.extract_sensor_msgs_point_cloud_2(topic)
-
-        elif msg_type == "sensor_msgs/Image":
-            print("Extracting images")
-            images, timestamps = self.extract_sensor_msgs_image(topic)
-
-        elif msg_type == "tf2_msgs/TFMessage":
-            print("Extracting tf2 transformations")
-            transforms_dict = self.extract_tf2_msgs_tf_message(topic)
-
-        elif msg_type == "pilatus_can/GNSS":
+        if msg_type == "pilatus_can/GNSS":
             print("Extracting pilatus_can/GNSS")
             poses, timestamps = self.extract_pilatus_can_gnss(topic)
+
+        # if msg_type == "sensor_msgs/PointCloud2":
+        #     print("Extracting point clouds, {} format".format(
+        #         self.point_cloud_file_format))
+        #     pcs, timestamps = self.extract_sensor_msgs_point_cloud_2(topic)
+        #
+        # elif msg_type == "sensor_msgs/Image":
+        #     print("Extracting images")
+        #     images, timestamps = self.extract_sensor_msgs_image(topic)
+        #
+        # elif msg_type == "tf2_msgs/TFMessage":
+        #     print("Extracting tf2 transformations")
+        #     transforms_dict = self.extract_tf2_msgs_tf_message(topic)
+        #
+        # elif msg_type == "pilatus_can/GNSS":
+        #     print("Extracting pilatus_can/GNSS")
+        #     poses, timestamps = self.extract_pilatus_can_gnss(topic)
 
     def extract_sensor_msgs_point_cloud_2(self, topic):
         pbar = tqdm(total=self.type_and_topic_info[1][topic].message_count,
@@ -273,7 +277,6 @@ class RosbagExtractor:
         if not os.path.exists(data_dir):
             os.makedirs(data_dir)
 
-        proj = Proj(proj='utm', zone=32, ellps='WGS84', preserve_units=False)
         counter = 0
         timestamps = []
         poses = []
@@ -295,16 +298,20 @@ class RosbagExtractor:
             pitch = msg.INS_pitch
             heading = msg.dual_heading
 
-            # projection = proj(long, lat)
             curr_pose = [long, lat, height, pitch, roll, heading]
             poses.append(curr_pose)
             timestamps.append(timestamp)
             counter += 1
 
+            if counter == 10:
+                break
+
         pbar.close()
 
-        with open(os.path.join(data_dir, 'timestamps.txt'), 'w') as filehandle:
-            filehandle.writelines("{:.6f}\n".format(timestamp)
-                                  for timestamp in timestamps)
+        filepath = os.path.join(data_dir, 'gnss.bin')
+        timestamp_arr = np.array(timestamps).reshape((counter, 1))
+        pose_arr = np.array(poses).reshape((counter, 6))
+        combined_arr = np.concatenate([timestamp_arr, pose_arr], axis=1)
+        combined_arr.tofile(filepath)
 
         return poses, timestamps
