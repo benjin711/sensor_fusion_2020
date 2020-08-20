@@ -290,12 +290,13 @@ class RosbagExtractor:
 
             lat = msg.RTK_latitude
             long = msg.RTK_longitude
+            height = msg.RTK_height
             roll = msg.INS_roll
             pitch = msg.INS_pitch
             heading = msg.dual_heading
 
-            projection = proj(long, lat)
-            curr_pose = [projection[0], projection[1], pitch, roll, heading]
+            # projection = proj(long, lat)
+            curr_pose = [long, lat, height, pitch, roll, heading]
             poses.append(curr_pose)
             timestamps.append(timestamp)
             counter += 1
