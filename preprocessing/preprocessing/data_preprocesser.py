@@ -24,6 +24,7 @@ class DataPreprocesser:
         self.keep_orig_data_folders = cfg.keep_orig_data_folders
         self.height, self.width, _ = get_image_size(self.data_folder_path)
 
+        self.raw_gnss_timestamps = []
         self.reference_timestamps = []
 
         # Point cloud motion compensation
@@ -48,6 +49,41 @@ class DataPreprocesser:
         return all(x in os.listdir(self.data_folder_path)
                    for x in self.expected_data_folders)
 
+    def load_gnss(self):
+        """
+        Matches each gnss message (20 Hz) to a group of images and pointclouds
+        (with corresponding timestamps).
+
+        Determine 3D position of visible cones at each matched timestamp.
+        Write parsed cone positions and timestamps to a new data folder.
+        """
+
+        # Fetch GNSS timestamps
+        timestamp_array = []
+        with open(os.path.join(self.data_folder_path, "gnss/timestamps.txt"), 'r') as timestamps_file:
+            for timestamp in timestamps_file:
+                timestamp_array.append(timestamp)
+            self.raw_gnss_timestamps = np.array(timestamp_array, dtype=np.float)
+
+    def filter_gnss(self, indices):
+        """
+        After matching image triplets to GNSS timestamps, we must remove the
+        non-matched timestamps and corresponding data entries
+        """
+        src_gnss_folder_path = os.path.join(self.data_folder_path, "gnss")
+        dst_gnss_folder_path = os.path.join(self.data_folder_path, "gnss_filtered")
+        os.makedirs(dst_gnss_folder_path, exist_ok=True)
+
+        gnss_data = np.fromfile(os.path.join(src_gnss_folder_path, "gnss.bin"))
+        gnss_data = gnss_data.reshape((-1, 6))
+
+        filtered_gnss_data = gnss_data[indices, :]
+        filtered_gnss_data.tofile(os.path.join(dst_gnss_folder_path, "gnss.bin"))
+
+        if not self.keep_orig_data_folders:
+            shutil.rmtree(src_gnss_folder_path)
+            os.rename(dst_gnss_folder_path, src_gnss_folder_path)
+
     def match_images_1(self):
         """
         Matches triples of images with the same time stamp. This function 
@@ -64,6 +100,7 @@ class DataPreprocesser:
             "forward_camera": [],
             "right_camera": [],
             "left_camera": [],
+            "gnss": []
         }
 
         for forward_camera_timestamp_idx, forward_camera_timestamp in enumerate(
@@ -96,20 +133,31 @@ class DataPreprocesser:
                     (forward_camera_timestamp, left_camera_timestamp,
                      right_camera_timestamp)):
 
-                    # Add the indices of the valid triple
-                    indices_dict["forward_camera"].append(
-                        forward_camera_timestamp_idx)
-                    indices_dict["right_camera"].append(
-                        right_camera_min_dtimestamp_idx)
-                    indices_dict["left_camera"].append(
-                        left_camera_min_dtimestamp_idx)
+                    mean_image_timestamp = np.mean([forward_camera_timestamp,
+                                                    left_camera_timestamp,
+                                                    right_camera_timestamp])
 
-                    self.reference_timestamps.append(
-                        np.mean([
-                            forward_camera_timestamp, left_camera_timestamp,
-                            right_camera_timestamp
-                        ]))
+                    gnss_dtimestamps = np.abs(self.gnss_timestamps -
+                                              mean_image_timestamp)
+                    gnss_min_dtimestamp_idx = np.argmin(gnss_dtimestamps)
+                    gnss_min_dtimestamp = gnss_dtimestamps[gnss_min_dtimestamp_idx]
 
+                    # TODO: Decide on GNSS or image timestamp as reference?
+                    if gnss_min_dtimestamp < self.MAX_DTIMESTAMP_THRESHOLD:
+                        # Add the indices of the valid image triple and gnss
+                        indices_dict["forward_camera"].append(
+                            forward_camera_timestamp_idx)
+                        indices_dict["right_camera"].append(
+                            right_camera_min_dtimestamp_idx)
+                        indices_dict["left_camera"].append(
+                            left_camera_min_dtimestamp_idx)
+                        indices_dict["gnss"].append(gnss_min_dtimestamp_idx)
+
+                        self.reference_timestamps.append(mean_image_timestamp)
+
+                        # TODO: Get cones
+
+        self.filter_gnss(indices_dict["gnss"])
         self.filter_images_1(indices_dict)
 
     def match_images_2(self):
@@ -164,8 +212,20 @@ class DataPreprocesser:
             indices_dict[self.id_camera_dict[ref_id]].append(int(ref_idx))
             camera_ids.remove(ref_id)
 
-            # Append timestamp
-            self.reference_timestamps.append(ref_timestamp)
+            # Match to GNSS
+            gnss_dtimestamps = np.abs(self.gnss_timestamps -
+                                      ref_timestamp)
+            gnss_min_dtimestamp_idx = np.argmin(gnss_dtimestamps)
+            gnss_min_dtimestamp = gnss_dtimestamps[gnss_min_dtimestamp_idx]
+
+            # TODO: Decide on GNSS or image timestamp as reference?
+            if gnss_min_dtimestamp < self.MAX_DTIMESTAMP_THRESHOLD:
+                indices_dict["gnss"].append(gnss_min_dtimestamp_idx)
+                self.reference_timestamps.append(ref_timestamp)
+
+                # TODO: Get cones
+            else:
+                continue
 
             # Insert second element
             if sec_timestamp - ref_timestamp < self.MAX_DTIMESTAMP_THRESHOLD:
@@ -220,6 +280,7 @@ class DataPreprocesser:
             int(timestamp_idx_id_array[-1, 0] - timestamp_idx_id_array[0, 0]) *
             10))
 
+        self.filter_gnss(indices_dict["gnss"])
         self.filter_images_2(indices_dict)
 
     def filter_images_1(self, indices_dict):
