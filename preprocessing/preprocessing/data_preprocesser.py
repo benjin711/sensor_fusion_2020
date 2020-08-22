@@ -34,6 +34,7 @@ class DataPreprocesser:
 
         # Constants
         self.MAX_DTIMESTAMP_THRESHOLD = 0.001
+        self.MAX_DTIMESTAMP_GNSS_THRESHOLD = 0.05
 
         self.camera_id_dict = {
             'forward_camera': 0,
@@ -144,7 +145,7 @@ class DataPreprocesser:
                     gnss_min_dtimestamp = gnss_dtimestamps[gnss_min_dtimestamp_idx]
 
                     # TODO: Decide on GNSS or image timestamp as reference?
-                    if gnss_min_dtimestamp < self.MAX_DTIMESTAMP_THRESHOLD:
+                    if gnss_min_dtimestamp < self.MAX_DTIMESTAMP_GNSS_THRESHOLD:
                         # Add the indices of the valid image triple and gnss
                         indices_dict["forward_camera"].append(
                             forward_camera_timestamp_idx)
@@ -159,6 +160,7 @@ class DataPreprocesser:
                         # TODO: Get cones
 
         self.filter_gnss(indices_dict["gnss"])
+        del indices_dict["gnss"]
         self.filter_images_1(indices_dict)
 
     def match_images_2(self):
@@ -220,7 +222,7 @@ class DataPreprocesser:
             gnss_min_dtimestamp = gnss_dtimestamps[gnss_min_dtimestamp_idx]
 
             # TODO: Decide on GNSS or image timestamp as reference?
-            if gnss_min_dtimestamp < self.MAX_DTIMESTAMP_THRESHOLD:
+            if gnss_min_dtimestamp < self.MAX_DTIMESTAMP_GNSS_THRESHOLD:
                 indices_dict["gnss"].append(gnss_min_dtimestamp_idx)
                 self.reference_timestamps.append(ref_timestamp)
 
@@ -282,6 +284,7 @@ class DataPreprocesser:
             10))
 
         self.filter_gnss(indices_dict["gnss"])
+        del indices_dict["gnss"]
         self.filter_images_2(indices_dict)
 
     def filter_images_1(self, indices_dict):
@@ -421,13 +424,13 @@ class DataPreprocesser:
                 # recording of a point cloud. Instead of taking this time
                 # stamp, we add 0.05s to approximate the mean time stamp
                 # of all the points in the point cloud
-                timediff = (pc_timestamps + 0.05) - ref_timestamp
-                idx = np.abs(timediff).argmin()
+                timediff = np.abs((pc_timestamps + 0.05) - ref_timestamp)
+                min_idx = timediff.argmin()
 
-                if np.abs(timediff[idx]) > 0.1:
+                if timediff[min_idx] > 0.1:
                     indices_dict[key].append(-1)
                 else:
-                    indices_dict[key].append(idx)
+                    indices_dict[key].append(min_idx)
 
         self.filter_point_clouds(indices_dict)
 

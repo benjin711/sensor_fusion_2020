@@ -83,8 +83,7 @@ def read_point_cloud(point_cloud_file):
         point_cloud = (np.fromfile(point_cloud_file,
                                    dtype=np.float64).reshape(-1, 6))
     elif ext == '.npy':
-        point_cloud = (np.load(point_cloud_file,
-                               dtype=np.float64).reshape(-1, 6))
+        point_cloud = (np.load(point_cloud_file).astype(np.float64).reshape(-1, 6))
     else:
         print("Invalid point cloud format encountered.")
         sys.exit()

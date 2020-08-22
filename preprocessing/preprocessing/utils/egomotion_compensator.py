@@ -52,6 +52,9 @@ class EgomotionCompensator:
                 p_xyz = point_cloud[idx][:3]
                 p_timestamp = point_cloud[idx][4]
 
+                # TODO: Error in interpolation from discrepancy between
+                #       ros msg timestamp, and the timestamp of individ. points
+
                 T_ego_wor[:3, :3] = self.R_slerp_ego_wor(
                     p_timestamp).as_matrix()
                 T_ego_wor[:3, 3] = self.t_interpolator_ego_wor(p_timestamp)
