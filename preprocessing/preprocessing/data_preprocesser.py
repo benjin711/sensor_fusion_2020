@@ -24,7 +24,8 @@ class DataPreprocesser:
         self.keep_orig_data_folders = cfg.keep_orig_data_folders
         self.height, self.width, _ = get_image_size(self.data_folder_path)
 
-        self.raw_gnss_timestamps = []
+        self.raw_gnss_timestamps = None
+        self.load_gnss()
         self.reference_timestamps = []
 
         # Point cloud motion compensation
@@ -137,7 +138,7 @@ class DataPreprocesser:
                                                     left_camera_timestamp,
                                                     right_camera_timestamp])
 
-                    gnss_dtimestamps = np.abs(self.gnss_timestamps -
+                    gnss_dtimestamps = np.abs(self.raw_gnss_timestamps -
                                               mean_image_timestamp)
                     gnss_min_dtimestamp_idx = np.argmin(gnss_dtimestamps)
                     gnss_min_dtimestamp = gnss_dtimestamps[gnss_min_dtimestamp_idx]
@@ -213,7 +214,7 @@ class DataPreprocesser:
             camera_ids.remove(ref_id)
 
             # Match to GNSS
-            gnss_dtimestamps = np.abs(self.gnss_timestamps -
+            gnss_dtimestamps = np.abs(self.raw_gnss_timestamps -
                                       ref_timestamp)
             gnss_min_dtimestamp_idx = np.argmin(gnss_dtimestamps)
             gnss_min_dtimestamp = gnss_dtimestamps[gnss_min_dtimestamp_idx]
