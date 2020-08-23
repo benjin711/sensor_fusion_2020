@@ -2,6 +2,7 @@ import os
 from utils.egomotion_compensator import *
 from utils.utils import *
 import numpy as np
+import sys
 from utils.static_transforms import *
 from scipy.spatial.transform import Rotation as R
 from scipy.spatial.transform import Slerp
@@ -11,6 +12,15 @@ from scipy import interpolate
 class DataPreprocesser:
     def __init__(self, cfg):
         self.data_folder_path = cfg.data_folder_path
+
+        self.expected_data_folders = [
+            "/tf", "/gnss", "/fw_lidar", "/mrh_lidar", "/forward_camera",
+            "/right_camera", "/left_camera"
+        ]
+        if not self.check_rosbag_extracted():
+            print("Rosbag doesn't seem to have been extracted yet.")
+            sys.exit()
+
         self.keep_orig_data_folders = cfg.keep_orig_data_folders
         self.height, self.width, _ = get_image_size(self.data_folder_path)
 
@@ -33,6 +43,9 @@ class DataPreprocesser:
             1: 'right_camera',
             2: 'left_camera'
         }
+
+    def check_rosbag_extracted(self):
+        return True
 
     def match_images_1(self):
         """
