@@ -73,7 +73,6 @@ class DataPreprocesser:
         Given two timestamps and two gnss data points, interpolate
         the gnss data at the ref_timestamp.
         """
-        print(gnss_data[0].shape)
         ref_gnss_data = np.zeros(gnss_data[0].shape)
         for data_idx in range(len(ref_gnss_data)):
             f = interpolate.interp1d(timestamps,
@@ -82,12 +81,37 @@ class DataPreprocesser:
             ref_gnss_data[data_idx] = f(ref_timestamp)
         return ref_gnss_data
 
+    def parse_gtmd(self, gtmd_path):
+        """
+        Given path to the GTMD csv file, open the file, parse it
+        to produce a numpy array. Each row has the format:
+        [Color, Latitude, Longitude, Height, Variance].
+
+        Color column is converted from string to integer: BLUE=0, YELLOW=1.
+        """
+        gtmd_data = np.genfromtxt(gtmd_path, delimiter=',', dtype=None)
+        gtmd_array = np.zeros((len(gtmd_data), 5))
+        for idx, gtmd_entry in enumerate(gtmd_data):
+            # Parse Color
+            color = gtmd_entry[0].decode("utf-8")
+            if color == 'Blue':
+                gtmd_array[idx, 0] = 0
+            elif color == 'Yellow':
+                gtmd_array[idx, 0] = 1
+            else:
+                gtmd_array[idx, 0] = 2
+
+            # Parse Lat, Long, Height, Variance
+            for col_idx in range(1, 5):
+                gtmd_array[idx, col_idx] = gtmd_entry[col_idx]
+        return gtmd_array
+
     def filter_gnss_and_cones(self, indices):
         """
         After matching image triplets to GNSS timestamps, we must remove the
         non-matched timestamps and corresponding data entries
         """
-
+        print("Filtering gnss")
         # Pathing
         src_gnss_folder_path = os.path.join(self.data_folder_path, "gnss")
         dst_gnss_folder_path = os.path.join(self.data_folder_path, "gnss_filtered")
@@ -95,7 +119,6 @@ class DataPreprocesser:
         os.makedirs(dst_cones_folder_path, exist_ok=True)
         os.makedirs(dst_gnss_folder_path, exist_ok=True)
 
-        # TODO: Test GNSS interpolation
         # Filter data by interpolation
         gnss_data = np.fromfile(os.path.join(src_gnss_folder_path, "gnss.bin"))
         gnss_data = gnss_data.reshape((-1, 6))
@@ -132,11 +155,10 @@ class DataPreprocesser:
         filtered_gnss_data.tofile(os.path.join(dst_gnss_folder_path, "gnss.bin"))
 
         # Get cones
-        os.path.split(os.path.normpath(os.path.join(self.data_folder_path, '..')))
-        _, data_folder_name = os.path.split(os.path.normpath(self.data_folder_path))
-        print(data_folder_name)
-        cone_data_path = os.path.join(self.data_folder_path, '..', data_folder_name + '.csv')
-        cone_data = np.loadtxt(cone_data_path, delimiter=', ')
+        gtmd_fn = os.listdir(os.path.join(self.data_folder_path, '../../gtmd'))[0]
+        gtmd_path = os.path.join(self.data_folder_path, '../../gtmd', gtmd_fn)
+        cone_array = self.parse_gtmd(gtmd_path)
+
         for gnss_data_idx in range(gnss_data.shape[0]):
             curr_gnss_data = gnss_data[gnss_data_idx]
 
