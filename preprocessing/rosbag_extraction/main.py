@@ -5,8 +5,11 @@ from rosbag_extractor import RosbagExtractor
 def main(cfg):
     extractor = RosbagExtractor(cfg)
 
-    for topic in cfg.topics:
-        extractor.extract(topic)
+    ret = extractor.init_file_structure()
+
+    if ret:
+        for topic in cfg.topics:
+            extractor.extract(topic)
 
 
 if __name__ == "__main__":

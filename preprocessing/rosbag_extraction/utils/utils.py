@@ -1,12 +1,13 @@
 import sensor_msgs.point_cloud2 as pc2
 import numpy as np
+import os
 
 
 def convert_msg_to_numpy(pc_msg):
     pc = []
     for point in pc2.read_points(pc_msg, skip_nans=True):
         pc.append(point)
-    return np.array(pc)
+    return np.array(pc, dtype=np.float64)
 
 
 def get_driving_interval(egomotion_to_world_transform):
@@ -32,3 +33,13 @@ def get_driving_interval(egomotion_to_world_transform):
     end_timestamp = timestamps[-1 - end_idx]
 
     return start_timestamp, end_timestamp
+
+
+def write_point_cloud(file_path, point_cloud):
+    _, ext = os.path.splitext(file_path)
+    if ext == '.npy':
+        np.save(file_path, point_cloud)
+    elif ext == '.bin':
+        point_cloud.tofile(file_path)
+    else:
+        print("Saving in specified point cloud format is not possible.")

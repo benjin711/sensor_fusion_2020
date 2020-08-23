@@ -4,29 +4,28 @@ from tqdm import tqdm
 import cv2
 from cv_bridge import CvBridge
 import numpy as np
-from utils.utils import convert_msg_to_numpy
-from utils.utils import get_driving_interval
+import shutil
+from utils.utils import *
 
 
 class RosbagExtractor:
     def __init__(self, cfg):
+        self.point_cloud_file_format = cfg.point_cloud_file_format
         self.moving_only_flag = cfg.moving_only
         self.rosbag_file_path = cfg.rosbag_file_path
         self.rosbag_filename = os.path.basename(cfg.rosbag_file_path)
         self.timestamp_started_driving = None
         self.timestamp_stopped_driving = None
 
+        # Folder where the extracted data should go to
+        self.data_folder = os.path.join(
+            os.path.dirname(cfg.rosbag_file_path), "../data",
+            os.path.splitext(self.rosbag_filename)[0])
+
         # Generate Bag object and extract meta data of all topics
         self.bag = rosbag.Bag(cfg.rosbag_file_path)
         self.type_and_topic_info = self.bag.get_type_and_topic_info(
             topic_filters=None)
-
-        # Create a folder where the extracted data should go to
-        self.data_folder = os.path.join(
-            os.path.dirname(cfg.rosbag_file_path), "../data",
-            os.path.splitext(self.rosbag_filename)[0])
-        if not os.path.exists(self.data_folder):
-            os.makedirs(self.data_folder)
 
         # If the moving_only_flag is true, extract from /tf topic first by
         # putting it at the first position
@@ -63,6 +62,21 @@ class RosbagExtractor:
             "/pilatus_can/GNSS": "gnss_data"
         }
 
+    def init_file_structure(self):
+
+        if os.path.exists(self.data_folder):
+            print(
+                "The directory {} exists already indicating that the rosbag has already been extracted before."
+                .format(os.path.splitext(self.rosbag_filename)[0]))
+
+            print("Reextracting rosbag. Cleaning old data.")
+            shutil.rmtree(self.data_folder)
+
+        else:
+            os.makedirs(self.data_folder)
+
+        return 1
+
     def extract(self, topic):
         print("Started extraction of topic {} in {}.".format(
             topic, self.rosbag_filename))
@@ -70,7 +84,8 @@ class RosbagExtractor:
         msg_type = self.type_and_topic_info[1][str(topic)].msg_type
 
         if msg_type == "sensor_msgs/PointCloud2":
-            print("Extracting point clouds")
+            print("Extracting point clouds, {} format".format(
+                self.point_cloud_file_format))
             pcs, timestamps = self.extract_sensor_msgs_point_cloud_2(topic)
 
         elif msg_type == "sensor_msgs/Image":
@@ -114,7 +129,11 @@ class RosbagExtractor:
             if pc.size == 0:
                 continue
 
-            np.save(os.path.join(data_dir, str(counter).zfill(8)), pc)
+            file_path = os.path.join(
+                data_dir,
+                str(counter).zfill(8)) + "." + self.point_cloud_file_format
+            write_point_cloud(file_path, pc)
+
             pcs.append(pc)
             timestamps.append(timestamp)
 
