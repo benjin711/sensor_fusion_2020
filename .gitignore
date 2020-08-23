@@ -11,3 +11,6 @@ __pycache__
 
 # Virtual Environment
 venv/
+
+# Pickles
+**.pkl
