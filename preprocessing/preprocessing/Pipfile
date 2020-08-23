@@ -11,6 +11,7 @@ opencv-python = "*"
 tqdm = "*"
 scipy = "*"
 open3d = "*"
+numpy = "*"
 
 [requires]
 python_version = "3.6"

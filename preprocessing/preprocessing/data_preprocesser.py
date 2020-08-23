@@ -14,8 +14,8 @@ class DataPreprocesser:
         self.data_folder_path = cfg.data_folder_path
 
         self.expected_data_folders = [
-            "/tf", "/gnss", "/fw_lidar", "/mrh_lidar", "/forward_camera",
-            "/right_camera", "/left_camera"
+            "tf", "gnss", "fw_lidar", "mrh_lidar", "forward_camera",
+            "right_camera", "left_camera"
         ]
         if not self.check_rosbag_extracted():
             print("Rosbag doesn't seem to have been extracted yet.")
@@ -45,8 +45,8 @@ class DataPreprocesser:
         }
 
     def check_rosbag_extracted(self):
-        return sorted(os.listdir(self.data_folder_path)) == sorted(
-            self.expected_data_folders)
+        return all(x in os.listdir(self.data_folder_path)
+                   for x in self.expected_data_folders)
 
     def match_images_1(self):
         """
@@ -144,7 +144,7 @@ class DataPreprocesser:
 
         idx = 0
         incomplete_data_counter = 0
-        while idx < timestamp_idx_id_array.shape[0]:
+        while idx < timestamp_idx_id_array.shape[0] - 2:
             camera_ids = [0, 1, 2]
 
             # First element
