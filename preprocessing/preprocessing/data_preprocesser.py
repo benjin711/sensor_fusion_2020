@@ -67,20 +67,85 @@ class DataPreprocesser:
                 timestamp_array.append(timestamp)
             self.raw_gnss_timestamps = np.array(timestamp_array, dtype=np.float)
 
-    def filter_gnss(self, indices):
+    # TODO: Get Cones and write
+    def interp_gnss(self, ref_timestamp, timestamps, gnss_data):
+        """
+        Given two timestamps and two gnss data points, interpolate
+        the gnss data at the ref_timestamp.
+        """
+        print(gnss_data[0].shape)
+        ref_gnss_data = np.zeros(gnss_data[0].shape)
+        for data_idx in range(len(ref_gnss_data)):
+            f = interpolate.interp1d(timestamps,
+                                     [gnss_data[0][data_idx], gnss_data[1][data_idx]],
+                                     fill_value='extrapolate')
+            ref_gnss_data[data_idx] = f(ref_timestamp)
+        return ref_gnss_data
+
+    def filter_gnss_and_cones(self, indices):
         """
         After matching image triplets to GNSS timestamps, we must remove the
         non-matched timestamps and corresponding data entries
         """
+
+        # Pathing
         src_gnss_folder_path = os.path.join(self.data_folder_path, "gnss")
         dst_gnss_folder_path = os.path.join(self.data_folder_path, "gnss_filtered")
+        dst_cones_folder_path = os.path.join(self.data_folder_path, "cones_filtered")
+        os.makedirs(dst_cones_folder_path, exist_ok=True)
         os.makedirs(dst_gnss_folder_path, exist_ok=True)
 
+        # TODO: Test GNSS interpolation
+        # Filter data by interpolation
         gnss_data = np.fromfile(os.path.join(src_gnss_folder_path, "gnss.bin"))
         gnss_data = gnss_data.reshape((-1, 6))
+        filtered_gnss_data = []
+        for gnss_timestamp_idx, ref_timestamp in enumerate(self.reference_timestamps):
+            gnss_data_idx = indices[gnss_timestamp_idx]
 
-        filtered_gnss_data = gnss_data[indices, :]
+            gnss_timestamp_1 = self.raw_gnss_timestamps[gnss_data_idx]
+            gnss_data_1 = gnss_data[gnss_data_idx, :]
+
+            if gnss_timestamp_1 > ref_timestamp:
+                gnss_data_idx_2 = gnss_data_idx-1
+                if gnss_data_idx == 0:
+                    gnss_data_idx_2 = gnss_data_idx+1
+
+                gnss_data_2 = gnss_data[gnss_data_idx_2, :]
+                gnss_timestamp_2 = self.raw_gnss_timestamps[gnss_data_idx_2]
+
+            else:
+                gnss_data_idx_2 = gnss_data_idx+1
+                if gnss_data_idx_2 == len(self.raw_gnss_timestamps):
+                    gnss_data_idx_2 = gnss_data_idx-1
+
+                gnss_data_2 = gnss_data[gnss_data_idx_2, :]
+                gnss_timestamp_2 = self.raw_gnss_timestamps[gnss_data_idx_2]
+
+            gnss_ref = self.interp_gnss(ref_timestamp,
+                                        [gnss_timestamp_1, gnss_timestamp_2],
+                                        [gnss_data_1, gnss_data_2])
+
+            filtered_gnss_data.append(gnss_ref.tolist())
+
+        filtered_gnss_data = np.array(filtered_gnss_data)
         filtered_gnss_data.tofile(os.path.join(dst_gnss_folder_path, "gnss.bin"))
+
+        # Get cones
+        os.path.split(os.path.normpath(os.path.join(self.data_folder_path, '..')))
+        _, data_folder_name = os.path.split(os.path.normpath(self.data_folder_path))
+        print(data_folder_name)
+        cone_data_path = os.path.join(self.data_folder_path, '..', data_folder_name + '.csv')
+        cone_data = np.loadtxt(cone_data_path, delimiter=', ')
+        for gnss_data_idx in range(gnss_data.shape[0]):
+            curr_gnss_data = gnss_data[gnss_data_idx]
+
+            # Transform cones to vehicle frame
+
+            # Filter cones by HFOV
+
+            # Write file
+            continue
 
         if not self.keep_orig_data_folders:
             shutil.rmtree(src_gnss_folder_path)
@@ -159,7 +224,7 @@ class DataPreprocesser:
 
                         # TODO: Get cones
 
-        self.filter_gnss(indices_dict["gnss"])
+        self.filter_gnss_and_cones(indices_dict["gnss"])
         del indices_dict["gnss"]
         self.filter_images_1(indices_dict)
 
@@ -283,7 +348,7 @@ class DataPreprocesser:
             int(timestamp_idx_id_array[-1, 0] - timestamp_idx_id_array[0, 0]) *
             10))
 
-        self.filter_gnss(indices_dict["gnss"])
+        self.filter_gnss_and_cones(indices_dict["gnss"])
         del indices_dict["gnss"]
         self.filter_images_2(indices_dict)
 
