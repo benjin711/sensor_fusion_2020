@@ -45,7 +45,8 @@ class DataPreprocesser:
         }
 
     def check_rosbag_extracted(self):
-        return True
+        return sorted(os.listdir(self.data_folder_path)) == sorted(
+            self.expected_data_folders)
 
     def match_images_1(self):
         """
