@@ -117,19 +117,19 @@ class DataPreprocesser:
         long_vehicle, lat_vehicle, h_vehicle = vehicle_gnss[:3]
         pitch, roll, heading = vehicle_gnss[3:]
         rotmat = R.from_euler('xyz', [pitch, roll, heading], degrees=True).as_matrix()
+        rotmat_enu2egomotion = R.from_euler('z', [90], degrees=True).as_matrix()[0]
         hfov_half_vehicle = 80
 
         # Convert cones to ENU
         cone_colors, cone_gps = cone_array[:, 0], cone_array[:, 1:4]
+        cone_colors = np.expand_dims(cone_colors, axis=1)
         cone_enu, cone_xyz = np.zeros(cone_gps.shape), np.zeros(cone_gps.shape)
         for cone_idx in range(cone_gps.shape[0]):
             cone_enu[cone_idx, :] = pymap3d.geodetic2enu(lat_vehicle, long_vehicle, h_vehicle,
                                                          cone_gps[cone_idx, 0], cone_gps[cone_idx, 1], cone_gps[cone_idx, 2],
                                                          ell=ell_wgs84, deg=True)
             cone_enu = np.matmul(cone_enu, np.transpose(rotmat))
-
-            # TODO: RTK to egomotion transform
-            cone_xyz = cone_enu
+            cone_xyz = np.matmul(cone_enu, np.transpose(rotmat_enu2egomotion))
 
         # Remove cones behind the vehicle, and filter by FOV
         forward_mask = cone_xyz[:, 0] > 0
@@ -138,7 +138,11 @@ class DataPreprocesser:
                                    cone_angles < hfov_half_vehicle)
         combined_mask = np.logical_and(forward_mask, hfov_mask)
 
-        cone_colors = cone_colors[combined_mask].reshape((-1, 1))
+        # Debug
+        # print(f"Initial cones: {cone_array.shape[0]}")
+        # print(f"Remaining cones: {np.sum(combined_mask)}")
+
+        cone_colors = cone_colors[combined_mask]
         cone_xyz = cone_xyz[combined_mask, :]
         filtered_cone_array = np.concatenate([cone_colors, cone_xyz], axis=1)
 
