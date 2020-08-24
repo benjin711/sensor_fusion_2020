@@ -7,6 +7,7 @@ from utils.static_transforms import *
 from scipy.spatial.transform import Rotation as R
 from scipy.spatial.transform import Slerp
 from scipy import interpolate
+import pymap3d
 
 
 class DataPreprocesser:
@@ -67,7 +68,6 @@ class DataPreprocesser:
                 timestamp_array.append(timestamp)
             self.raw_gnss_timestamps = np.array(timestamp_array, dtype=np.float)
 
-    # TODO: Get Cones and write
     def interp_gnss(self, ref_timestamp, timestamps, gnss_data):
         """
         Given two timestamps and two gnss data points, interpolate
@@ -106,12 +106,52 @@ class DataPreprocesser:
                 gtmd_array[idx, col_idx] = gtmd_entry[col_idx]
         return gtmd_array
 
+    def filter_cones(self, cone_array, vehicle_gnss):
+        """
+        Given a cone array (N, 5) where each row is formatted as:
+        [Color, Latitude, Longitude, Height, Variance], and the
+        gnss data for the vehicle at an instance in time, determine the
+        3D position of cones within the vehicle's HFOV at that instance.
+        """
+        ell_wgs84 = pymap3d.Ellipsoid('wgs84')
+        long_vehicle, lat_vehicle, h_vehicle = vehicle_gnss[:3]
+        pitch, roll, heading = vehicle_gnss[3:]
+        rotmat = R.from_euler('xyz', [pitch, roll, heading], degrees=True).as_matrix()
+        hfov_half_vehicle = 80
+
+        # Convert cones to ENU
+        cone_colors, cone_gps = cone_array[:, 0], cone_array[:, 1:4]
+        cone_enu, cone_xyz = np.zeros(cone_gps.shape), np.zeros(cone_gps.shape)
+        for cone_idx in range(cone_gps.shape[0]):
+            cone_enu[cone_idx, :] = pymap3d.geodetic2enu(lat_vehicle, long_vehicle, h_vehicle,
+                                                         cone_gps[cone_idx, 0], cone_gps[cone_idx, 1], cone_gps[cone_idx, 2],
+                                                         ell=ell_wgs84, deg=True)
+            cone_enu = np.matmul(cone_enu, np.transpose(rotmat))
+
+            # TODO: RTK to egomotion transform
+            cone_xyz = cone_enu
+
+        # Remove cones behind the vehicle, and filter by FOV
+        forward_mask = cone_xyz[:, 0] > 0
+        cone_angles = np.rad2deg(np.arctan2(cone_xyz[:, 1], cone_xyz[:, 0]))
+        hfov_mask = np.logical_and(cone_angles > -hfov_half_vehicle,
+                                   cone_angles < hfov_half_vehicle)
+        combined_mask = np.logical_and(forward_mask, hfov_mask)
+
+        cone_colors = cone_colors[combined_mask].reshape((-1, 1))
+        cone_xyz = cone_xyz[combined_mask, :]
+        filtered_cone_array = np.concatenate([cone_colors, cone_xyz], axis=1)
+
+        return filtered_cone_array
+
+
     def filter_gnss_and_cones(self, indices):
         """
         After matching image triplets to GNSS timestamps, we must remove the
         non-matched timestamps and corresponding data entries
         """
         print("Filtering gnss")
+
         # Pathing
         src_gnss_folder_path = os.path.join(self.data_folder_path, "gnss")
         dst_gnss_folder_path = os.path.join(self.data_folder_path, "gnss_filtered")
@@ -120,54 +160,42 @@ class DataPreprocesser:
         os.makedirs(dst_gnss_folder_path, exist_ok=True)
 
         # Filter data by interpolation
-        gnss_data = np.fromfile(os.path.join(src_gnss_folder_path, "gnss.bin"))
-        gnss_data = gnss_data.reshape((-1, 6))
+        gnss_data = np.fromfile(os.path.join(src_gnss_folder_path, "gnss.bin")).reshape((-1, 6))
         filtered_gnss_data = []
-        for gnss_timestamp_idx, ref_timestamp in enumerate(self.reference_timestamps):
-            gnss_data_idx = indices[gnss_timestamp_idx]
+        for timestamp_idx, ref_timestamp in enumerate(self.reference_timestamps):
+            gnss_data_idx_1 = indices[timestamp_idx]
+            gnss_timestamp_1 = self.raw_gnss_timestamps[gnss_data_idx_1]
+            gnss_data_1 = gnss_data[gnss_data_idx_1, :]
 
-            gnss_timestamp_1 = self.raw_gnss_timestamps[gnss_data_idx]
-            gnss_data_1 = gnss_data[gnss_data_idx, :]
-
-            if gnss_timestamp_1 > ref_timestamp:
-                gnss_data_idx_2 = gnss_data_idx-1
-                if gnss_data_idx == 0:
-                    gnss_data_idx_2 = gnss_data_idx+1
-
+            # Determine whether to use PREV or NEXT data point for interp
+            if (gnss_timestamp_1 > ref_timestamp and gnss_data_idx_1 > 0) or \
+            (gnss_data_idx_1 == len(self.raw_gnss_timestamps)-1):
+                gnss_data_idx_2 = gnss_data_idx_1-1
                 gnss_data_2 = gnss_data[gnss_data_idx_2, :]
                 gnss_timestamp_2 = self.raw_gnss_timestamps[gnss_data_idx_2]
 
             else:
-                gnss_data_idx_2 = gnss_data_idx+1
-                if gnss_data_idx_2 == len(self.raw_gnss_timestamps):
-                    gnss_data_idx_2 = gnss_data_idx-1
-
+                gnss_data_idx_2 = gnss_data_idx_1+1
                 gnss_data_2 = gnss_data[gnss_data_idx_2, :]
                 gnss_timestamp_2 = self.raw_gnss_timestamps[gnss_data_idx_2]
 
-            gnss_ref = self.interp_gnss(ref_timestamp,
-                                        [gnss_timestamp_1, gnss_timestamp_2],
-                                        [gnss_data_1, gnss_data_2])
-
-            filtered_gnss_data.append(gnss_ref.tolist())
+            gnss_data_ref = self.interp_gnss(ref_timestamp,
+                                             [gnss_timestamp_1, gnss_timestamp_2],
+                                             [gnss_data_1, gnss_data_2])
+            filtered_gnss_data.append(gnss_data_ref.tolist())
 
         filtered_gnss_data = np.array(filtered_gnss_data)
         filtered_gnss_data.tofile(os.path.join(dst_gnss_folder_path, "gnss.bin"))
 
-        # Get cones
+        # Fetch cones and process them using filtered GNSS data
         gtmd_fn = os.listdir(os.path.join(self.data_folder_path, '../../gtmd'))[0]
         gtmd_path = os.path.join(self.data_folder_path, '../../gtmd', gtmd_fn)
         cone_array = self.parse_gtmd(gtmd_path)
 
-        for gnss_data_idx in range(gnss_data.shape[0]):
-            curr_gnss_data = gnss_data[gnss_data_idx]
-
-            # Transform cones to vehicle frame
-
-            # Filter cones by HFOV
-
-            # Write file
-            continue
+        for gnss_data_idx in range(filtered_gnss_data.shape[0]):
+            cone_array_local = self.filter_cones(cone_array,
+                                                 gnss_data[gnss_data_idx, :])
+            cone_array_local.tofile(os.path.join(dst_cones_folder_path, str(gnss_data_idx).zfill(8) + '.bin'))
 
         if not self.keep_orig_data_folders:
             shutil.rmtree(src_gnss_folder_path)
