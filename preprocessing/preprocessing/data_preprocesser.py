@@ -263,7 +263,6 @@ class DataPreprocesser:
                     gnss_min_dtimestamp_idx = np.argmin(gnss_dtimestamps)
                     gnss_min_dtimestamp = gnss_dtimestamps[gnss_min_dtimestamp_idx]
 
-                    # TODO: Decide on GNSS or image timestamp as reference?
                     if gnss_min_dtimestamp < self.MAX_DTIMESTAMP_GNSS_THRESHOLD:
                         # Add the indices of the valid image triple and gnss
                         indices_dict["forward_camera"].append(
@@ -275,8 +274,6 @@ class DataPreprocesser:
                         indices_dict["gnss"].append(gnss_min_dtimestamp_idx)
 
                         self.reference_timestamps.append(mean_image_timestamp)
-
-                        # TODO: Get cones
 
         self.filter_gnss_and_cones(indices_dict["gnss"])
         del indices_dict["gnss"]
@@ -345,7 +342,6 @@ class DataPreprocesser:
                 indices_dict["gnss"].append(gnss_min_dtimestamp_idx)
                 self.reference_timestamps.append(ref_timestamp)
 
-                # TODO: Get cones
             else:
                 continue
 
