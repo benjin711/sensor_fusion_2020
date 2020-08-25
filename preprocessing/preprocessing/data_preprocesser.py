@@ -118,6 +118,7 @@ class DataPreprocesser:
         pitch, roll, heading = vehicle_gnss[3:]
         rotmat = R.from_euler('xyz', [pitch, roll, heading], degrees=True).as_matrix()
         rotmat_enu2egomotion = R.from_euler('z', [90], degrees=True).as_matrix()[0]
+        transvec_enu2egomotion = np.array([1.166, 0, 0]).reshape((1, 3))
         hfov_half_vehicle = 80
 
         # Convert cones to ENU
@@ -130,6 +131,7 @@ class DataPreprocesser:
                                                          ell=ell_wgs84, deg=True)
             cone_enu = np.matmul(cone_enu, np.transpose(rotmat))
             cone_xyz = np.matmul(cone_enu, np.transpose(rotmat_enu2egomotion))
+            cone_xyz += transvec_enu2egomotion
 
         # Remove cones behind the vehicle, and filter by FOV
         forward_mask = cone_xyz[:, 0] > 0
