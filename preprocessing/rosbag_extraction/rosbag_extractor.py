@@ -7,8 +7,7 @@ import numpy as np
 import shutil
 from pyproj import Proj
 
-from utils.utils import convert_msg_to_numpy
-from utils.utils import get_driving_interval
+from utils.utils import *
 
 
 class RosbagExtractor:
@@ -293,9 +292,6 @@ class RosbagExtractor:
             poses.append(curr_pose)
             timestamps.append(timestamp)
             counter += 1
-
-            if counter == 50:
-                break
 
         pbar.close()
 
