@@ -1,4 +1,5 @@
 import numpy as np
+import yaml
 import os
 import cv2
 import shutil
@@ -82,8 +83,7 @@ def read_point_cloud(point_cloud_file):
         point_cloud = (np.fromfile(point_cloud_file,
                                    dtype=np.float64).reshape(-1, 6))
     elif ext == '.npy':
-        point_cloud = (np.load(point_cloud_file,
-                               dtype=np.float64).reshape(-1, 6))
+        point_cloud = (np.load(point_cloud_file).astype(np.float64).reshape(-1, 6))
     else:
         print("Invalid point cloud format encountered.")
         sys.exit()
@@ -141,3 +141,54 @@ def read_dynamic_transformation(transform, data_folder_path):
 
     else:
         print("The requested dynamic transform doesn't exist")
+
+
+def load_rosparam_mat(yaml_dict, param_name):
+    """Given a dict intended for ROS, convert the list to a matrix for a given key"""
+    rows = yaml_dict[param_name]['rows']
+    cols = yaml_dict[param_name]['cols']
+    data = yaml_dict[param_name]['data']
+
+    return np.asarray(data).reshape((rows, cols))
+
+
+def load_stereo_calib(camera_fn, stereo_fn):
+
+    if not os.path.exists(camera_fn) or not os.path.exists(stereo_fn):
+        print("Calibration files do not exist!")
+        exit()
+
+    calib = {}
+    with open(camera_fn) as camera_f:
+        camera_data = yaml.load(camera_f)
+
+    with open(stereo_fn) as stereo_f:
+        stereo_data = yaml.load(stereo_f)
+
+    calib['camera_matrix'] = load_rosparam_mat(camera_data, 'camera_matrix')
+    calib['distortion_coefficients'] = load_rosparam_mat(camera_data, 'distortion_coefficients')
+    calib['image_width'] = camera_data['image_width']
+    calib['image_height'] = camera_data['image_height']
+    calib['rotation_matrix'] = load_rosparam_mat(stereo_data, 'rotation_matrix')
+    calib['translation_vector'] = load_rosparam_mat(stereo_data, 'translation_vector')
+    calib['fundamental_matrix'] = load_rosparam_mat(stereo_data, 'fundamental_matrix')
+
+    return calib
+
+
+def load_camera_calib(camera_fn):
+
+    if not os.path.exists(camera_fn):
+        print("Calibration file does not exist!")
+        exit()
+
+    calib = {}
+    with open(camera_fn) as camera_f:
+        camera_data = yaml.load(camera_f)
+
+    calib['camera_matrix'] = load_rosparam_mat(camera_data, 'camera_matrix')
+    calib['distortion_coefficients'] = load_rosparam_mat(camera_data, 'distortion_coefficients')
+    calib['image_width'] = camera_data['image_width']
+    calib['image_height'] = camera_data['image_height']
+
+    return calib
