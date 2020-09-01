@@ -12,6 +12,8 @@ tqdm = "*"
 scipy = "*"
 open3d = "*"
 numpy = "*"
+pyyaml = "*"
+pymap3d = "*"
 
 [requires]
 python_version = "3.6"
