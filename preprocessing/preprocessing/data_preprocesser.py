@@ -311,9 +311,14 @@ class DataPreprocesser:
         timestamp_arrays_dict = get_camera_timestamps(self.data_folder_path)
 
         indices_dict = {}
+
         # Initialization
-        for key in timestamp_arrays_dict.keys():
-            indices_dict[key] = []
+        indices_dict = {
+            "forward_camera": [],
+            "right_camera": [],
+            "left_camera": [],
+            "gnss": []
+        }
 
         timestamp_idx_id_array = np.empty((0, 3), dtype=np.float64)
 
@@ -332,7 +337,7 @@ class DataPreprocesser:
         idx = 0
         incomplete_data_counter = 0
         while idx < timestamp_idx_id_array.shape[0] - 2:
-            camera_ids = [0, 1, 2]
+            camera_ids = list(self.camera_id_dict.values())
 
             # First element
             ref_timestamp = timestamp_idx_id_array[idx, 0]
@@ -347,10 +352,6 @@ class DataPreprocesser:
             thi_idx = timestamp_idx_id_array[idx + 2, 1]
             thi_id = timestamp_idx_id_array[idx + 2, 2]
 
-            # Insert first element
-            indices_dict[self.id_camera_dict[ref_id]].append(int(ref_idx))
-            camera_ids.remove(ref_id)
-
             # Match to GNSS
             gnss_dtimestamps = np.abs(self.raw_gnss_timestamps - ref_timestamp)
             gnss_min_dtimestamp_idx = np.argmin(gnss_dtimestamps)
@@ -362,7 +363,13 @@ class DataPreprocesser:
                 self.reference_timestamps.append(ref_timestamp)
 
             else:
+                # If there is no GT position of the car at the timestamp
+                idx += 1
                 continue
+
+            # Insert first element
+            indices_dict[self.id_camera_dict[ref_id]].append(int(ref_idx))
+            camera_ids.remove(ref_id)
 
             # Insert second element
             if sec_timestamp - ref_timestamp < self.MAX_DTIMESTAMP_THRESHOLD:
