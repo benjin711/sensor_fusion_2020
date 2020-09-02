@@ -83,7 +83,8 @@ def read_point_cloud(point_cloud_file):
         point_cloud = (np.fromfile(point_cloud_file,
                                    dtype=np.float64).reshape(-1, 6))
     elif ext == '.npy':
-        point_cloud = (np.load(point_cloud_file).astype(np.float64).reshape(-1, 6))
+        point_cloud = (np.load(point_cloud_file).astype(np.float64).reshape(
+            -1, 6))
     else:
         print("Invalid point cloud format encountered.")
         sys.exit()
@@ -103,22 +104,22 @@ def write_point_cloud(point_cloud_file, point_cloud):
 
 def read_static_transformation(transform):
     if transform == "fw_lidar_to_mrh_lidar":
-        yaw = fw_lidar_to_mrh_lidar[20200726111500]['yaw']
-        pitch = fw_lidar_to_mrh_lidar[20200726111500]['pitch']
-        roll = fw_lidar_to_mrh_lidar[20200726111500]['roll']
-        x = fw_lidar_to_mrh_lidar[20200726111500]['x']
-        y = fw_lidar_to_mrh_lidar[20200726111500]['y']
-        z = fw_lidar_to_mrh_lidar[20200726111500]['z']
+        yaw = fw_lidar_to_mrh_lidar[0]['yaw']
+        pitch = fw_lidar_to_mrh_lidar[0]['pitch']
+        roll = fw_lidar_to_mrh_lidar[0]['roll']
+        x = fw_lidar_to_mrh_lidar[0]['x']
+        y = fw_lidar_to_mrh_lidar[0]['y']
+        z = fw_lidar_to_mrh_lidar[0]['z']
         r = R.from_euler('zyx', [yaw, pitch, roll], degrees=False)
         t = np.array([x, y, z])
 
     elif transform == "mrh_lidar_to_egomotion":
-        yaw = mrh_lidar_to_egomotion[20200726111500]['yaw']
-        pitch = mrh_lidar_to_egomotion[20200726111500]['pitch']
-        roll = mrh_lidar_to_egomotion[20200726111500]['roll']
-        x = mrh_lidar_to_egomotion[20200726111500]['x']
-        y = mrh_lidar_to_egomotion[20200726111500]['y']
-        z = mrh_lidar_to_egomotion[20200726111500]['z']
+        yaw = mrh_lidar_to_egomotion[0]['yaw']
+        pitch = mrh_lidar_to_egomotion[0]['pitch']
+        roll = mrh_lidar_to_egomotion[0]['roll']
+        x = mrh_lidar_to_egomotion[0]['x']
+        y = mrh_lidar_to_egomotion[0]['y']
+        z = mrh_lidar_to_egomotion[0]['z']
         r = R.from_euler('zyx', [yaw, pitch, roll], degrees=False)
         t = np.array([x, y, z])
 
@@ -166,12 +167,16 @@ def load_stereo_calib(camera_fn, stereo_fn):
         stereo_data = yaml.load(stereo_f)
 
     calib['camera_matrix'] = load_rosparam_mat(camera_data, 'camera_matrix')
-    calib['distortion_coefficients'] = load_rosparam_mat(camera_data, 'distortion_coefficients')
+    calib['distortion_coefficients'] = load_rosparam_mat(
+        camera_data, 'distortion_coefficients')
     calib['image_width'] = camera_data['image_width']
     calib['image_height'] = camera_data['image_height']
-    calib['rotation_matrix'] = load_rosparam_mat(stereo_data, 'rotation_matrix')
-    calib['translation_vector'] = load_rosparam_mat(stereo_data, 'translation_vector')
-    calib['fundamental_matrix'] = load_rosparam_mat(stereo_data, 'fundamental_matrix')
+    calib['rotation_matrix'] = load_rosparam_mat(stereo_data,
+                                                 'rotation_matrix')
+    calib['translation_vector'] = load_rosparam_mat(stereo_data,
+                                                    'translation_vector')
+    calib['fundamental_matrix'] = load_rosparam_mat(stereo_data,
+                                                    'fundamental_matrix')
 
     return calib
 
@@ -187,7 +192,8 @@ def load_camera_calib(camera_fn):
         camera_data = yaml.load(camera_f)
 
     calib['camera_matrix'] = load_rosparam_mat(camera_data, 'camera_matrix')
-    calib['distortion_coefficients'] = load_rosparam_mat(camera_data, 'distortion_coefficients')
+    calib['distortion_coefficients'] = load_rosparam_mat(
+        camera_data, 'distortion_coefficients')
     calib['image_width'] = camera_data['image_width']
     calib['image_height'] = camera_data['image_height']
 
