@@ -242,8 +242,10 @@ class RosbagExtractor:
                 transforms_dict[key] = (np.array(
                     transforms_dict[key])[driving_interval_mask]).tolist()
 
-        for key in transforms_dict:
-            with open(os.path.join(data_dir, key + '.txt'), 'w') as filehandle:
+        with open(os.path.join(data_dir, key + '.txt'), 'w') as filehandle:
+            # Write a header explaining the data
+            filehandle.writelines("timestamp, x, y, z, q_x, q_y, q_z, q_w")
+            for key in transforms_dict:
                 filehandle.writelines(
                     "{:.6f}, {}, {}, {}, {}, {}, {}, {}\n".format(
                         transform[0],
