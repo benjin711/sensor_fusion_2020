@@ -8,7 +8,7 @@ python2 -m virtualenv --system-site-packages venv
 
 ### Requirements
 The rosbags and gtmd.csv files are expected to be in a folder structure similar to the following for extraction. The extracted data will be in a folder called "data" in the folders of the respective testing days alongside the "gtmd" and "rosbags" folders. 
-
+```
 amz_sensor_fusion_data/
 ├── 2020-07-05_tuggen
 │   ├── gtmd
@@ -21,7 +21,7 @@ amz_sensor_fusion_data/
     │   └── 2020-07-08_duebendorf.csv
     └── rosbags
         └── autocross_2020-07-08-09-02-59.bag
-
+```
 There is no requirements.txt file because with the --system-site-packages flag, all potentially unnecessary system site packages get displayed as well. Here is a list of packages that work for me:
 
 opencv-python 4.2.0.32
