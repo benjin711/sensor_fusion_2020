@@ -8,10 +8,10 @@ def read_point_cloud(point_cloud_file):
 
     if ext == '.bin':
         point_cloud = (np.fromfile(point_cloud_file,
-                                   dtype=np.float32).reshape(-1, 6))
+                                   dtype=np.float64).reshape(-1, 6))
     elif ext == '.npy':
         point_cloud = (np.load(point_cloud_file,
-                               dtype=np.float32).reshape(-1, 6))
+                               dtype=np.float64).reshape(-1, 6))
     else:
         print("Invalid point cloud format encountered.")
         sys.exit()
@@ -20,11 +20,11 @@ def read_point_cloud(point_cloud_file):
 
 
 fw_pc = read_point_cloud(
-    "/media/benjin/Windows/Users/benja/Data/amz_sensor_fusion_data/2020-07-05_tuggen/data/autocross_2020-07-05-12-35-31/fw_lidar_filtered/00000010.bin"
+    "/home/benjin/Desktop/autocross_2020-07-05-12-35-31/fw_lidar_filtered/00000001.bin"
 )
 
 mrh_pc = read_point_cloud(
-    "/media/benjin/Windows/Users/benja/Data/amz_sensor_fusion_data/2020-07-05_tuggen/data/autocross_2020-07-05-12-35-31/mrh_lidar_filtered/00000010.bin"
+    "/home/benjin/Desktop/autocross_2020-07-05-12-35-31/mrh_lidar_filtered/00000001.bin"
 )
 
 fw_pcd = o3d.geometry.PointCloud()

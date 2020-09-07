@@ -5,6 +5,8 @@ import cv2
 from cv_bridge import CvBridge
 import numpy as np
 import shutil
+from pyproj import Proj
+
 from utils.utils import *
 
 
@@ -98,7 +100,7 @@ class RosbagExtractor:
 
         elif msg_type == "pilatus_can/GNSS":
             print("Extracting pilatus_can/GNSS")
-            self.extract_pilatus_can_gnss(topic)
+            poses, timestamps = self.extract_pilatus_can_gnss(topic)
 
     def extract_sensor_msgs_point_cloud_2(self, topic):
         pbar = tqdm(total=self.type_and_topic_info[1][topic].message_count,
@@ -240,8 +242,10 @@ class RosbagExtractor:
                 transforms_dict[key] = (np.array(
                     transforms_dict[key])[driving_interval_mask]).tolist()
 
-        for key in transforms_dict:
-            with open(os.path.join(data_dir, key + '.txt'), 'w') as filehandle:
+        with open(os.path.join(data_dir, key + '.txt'), 'w') as filehandle:
+            # Write a header explaining the data
+            filehandle.writelines("timestamp, x, y, z, q_x, q_y, q_z, q_w")
+            for key in transforms_dict:
                 filehandle.writelines(
                     "{:.6f}, {}, {}, {}, {}, {}, {}, {}\n".format(
                         transform[0],
@@ -257,5 +261,47 @@ class RosbagExtractor:
         return transforms_dict
 
     def extract_pilatus_can_gnss(self, topic):
-        print("Not implemented.")
-        pass
+        pbar = tqdm(total=self.type_and_topic_info[1][topic].message_count,
+                    desc=topic)
+
+        data_dir = os.path.join(self.data_folder,
+                                self.topic_name_to_folder_name_dict[topic])
+        if not os.path.exists(data_dir):
+            os.makedirs(data_dir)
+
+        counter = 0
+        timestamps = []
+        poses = []
+
+        for _, msg, _ in self.bag.read_messages(topics=[topic]):
+            pbar.update(1)
+
+            timestamp = float("{}.{}".format(
+                str(msg.header.stamp.secs),
+                str(msg.header.stamp.nsecs).zfill(9)))
+            if self.moving_only_flag:
+                if timestamp < self.timestamp_started_driving or timestamp > self.timestamp_stopped_driving:
+                    continue
+
+            lat = msg.RTK_latitude
+            long = msg.RTK_longitude
+            height = msg.RTK_height
+            roll = msg.INS_roll
+            pitch = msg.INS_pitch
+            heading = msg.dual_heading
+
+            curr_pose = [long, lat, height, pitch, roll, heading]
+            poses.append(curr_pose)
+            timestamps.append(timestamp)
+            counter += 1
+
+        pbar.close()
+
+        filepath = os.path.join(data_dir, 'gnss.bin')
+        pose_arr = np.array(poses).reshape((counter, 6)).tofile(filepath)
+
+        with open(os.path.join(data_dir, 'timestamps.txt'), 'w') as filehandle:
+            filehandle.writelines("{:.6f}\n".format(timestamp)
+                                  for timestamp in timestamps)
+
+        return poses, timestamps

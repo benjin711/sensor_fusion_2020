@@ -7,6 +7,7 @@ from utils.static_transforms import *
 from scipy.spatial.transform import Rotation as R
 from scipy.spatial.transform import Slerp
 from scipy import interpolate
+import pymap3d
 
 
 class DataPreprocesser:
@@ -24,6 +25,8 @@ class DataPreprocesser:
         self.keep_orig_data_folders = cfg.keep_orig_data_folders
         self.height, self.width, _ = get_image_size(self.data_folder_path)
 
+        self.raw_gnss_timestamps = None
+        self.load_gnss()
         self.reference_timestamps = []
 
         # Point cloud motion compensation
@@ -32,6 +35,7 @@ class DataPreprocesser:
 
         # Constants
         self.MAX_DTIMESTAMP_THRESHOLD = 0.001
+        self.MAX_DTIMESTAMP_GNSS_THRESHOLD = 0.05
 
         self.camera_id_dict = {
             'forward_camera': 0,
@@ -47,6 +51,177 @@ class DataPreprocesser:
     def check_rosbag_extracted(self):
         return all(x in os.listdir(self.data_folder_path)
                    for x in self.expected_data_folders)
+
+    def load_gnss(self):
+        """
+        Matches each gnss message (20 Hz) to a group of images and pointclouds
+        (with corresponding timestamps).
+
+        Determine 3D position of visible cones at each matched timestamp.
+        Write parsed cone positions and timestamps to a new data folder.
+        """
+
+        # Fetch GNSS timestamps
+        timestamp_array = []
+        with open(os.path.join(self.data_folder_path, "gnss/timestamps.txt"),
+                  'r') as timestamps_file:
+            for timestamp in timestamps_file:
+                timestamp_array.append(timestamp)
+            self.raw_gnss_timestamps = np.array(timestamp_array,
+                                                dtype=np.float)
+
+    def interp_gnss(self, ref_timestamp, timestamps, gnss_data):
+        """
+        Given two timestamps and two gnss data points, interpolate
+        the gnss data at the ref_timestamp.
+        """
+        ref_gnss_data = np.zeros(gnss_data[0].shape)
+        for data_idx in range(len(ref_gnss_data)):
+            f = interpolate.interp1d(
+                timestamps, [gnss_data[0][data_idx], gnss_data[1][data_idx]],
+                fill_value='extrapolate')
+            ref_gnss_data[data_idx] = f(ref_timestamp)
+        return ref_gnss_data
+
+    def parse_gtmd(self, gtmd_path):
+        """
+        Given path to the GTMD csv file, open the file, parse it
+        to produce a numpy array. Each row has the format:
+        [Color, Latitude, Longitude, Height, Variance].
+
+        Color column is converted from string to integer: BLUE=0, YELLOW=1.
+        """
+        gtmd_data = np.genfromtxt(gtmd_path, delimiter=',', dtype=None)
+        gtmd_array = np.zeros((len(gtmd_data), 5))
+        for idx, gtmd_entry in enumerate(gtmd_data):
+            # Parse Color
+            color = gtmd_entry[0].decode("utf-8")
+            if color == 'Blue':
+                gtmd_array[idx, 0] = 0
+            elif color == 'Yellow':
+                gtmd_array[idx, 0] = 1
+            else:
+                gtmd_array[idx, 0] = 2
+
+            # Parse Lat, Long, Height, Variance
+            for col_idx in range(1, 5):
+                gtmd_array[idx, col_idx] = gtmd_entry[col_idx]
+        return gtmd_array
+
+    def filter_cones(self, cone_array, vehicle_gnss):
+        """
+        Given a cone array (N, 5) where each row is formatted as:
+        [Color, Latitude, Longitude, Height, Variance], and the
+        gnss data for the vehicle at an instance in time, determine the
+        3D position of cones within the vehicle's HFOV at that instance.
+        """
+        ell_wgs84 = pymap3d.Ellipsoid('wgs84')
+        long_vehicle, lat_vehicle, h_vehicle = vehicle_gnss[:3]
+        pitch, roll, heading = vehicle_gnss[3:]
+        rotmat = R.from_euler('xyz', [pitch, roll, heading],
+                              degrees=True).as_matrix()
+        rotmat_enu2egomotion = R.from_euler('z', [90],
+                                            degrees=True).as_matrix()[0]
+        transvec_enu2egomotion = np.array([1.166, 0, 0]).reshape((1, 3))
+        hfov_half_vehicle = 80
+
+        # Convert cones to ENU
+        cone_colors, cone_gps = cone_array[:, 0], cone_array[:, 1:4]
+        cone_colors = np.expand_dims(cone_colors, axis=1)
+        cone_enu, cone_xyz = np.zeros(cone_gps.shape), np.zeros(cone_gps.shape)
+        for cone_idx in range(cone_gps.shape[0]):
+            cone_enu[cone_idx, :] = pymap3d.geodetic2enu(lat_vehicle,
+                                                         long_vehicle,
+                                                         h_vehicle,
+                                                         cone_gps[cone_idx, 0],
+                                                         cone_gps[cone_idx, 1],
+                                                         cone_gps[cone_idx, 2],
+                                                         ell=ell_wgs84,
+                                                         deg=True)
+            cone_enu = np.matmul(cone_enu, np.transpose(rotmat))
+            cone_xyz = np.matmul(cone_enu, np.transpose(rotmat_enu2egomotion))
+            cone_xyz += transvec_enu2egomotion
+
+        # Remove cones behind the vehicle, and filter by FOV
+        forward_mask = cone_xyz[:, 0] > 0
+        cone_angles = np.rad2deg(np.arctan2(cone_xyz[:, 1], cone_xyz[:, 0]))
+        hfov_mask = np.logical_and(cone_angles > -hfov_half_vehicle,
+                                   cone_angles < hfov_half_vehicle)
+        combined_mask = np.logical_and(forward_mask, hfov_mask)
+
+        # Debug
+        # print(f"Initial cones: {cone_array.shape[0]}")
+        # print(f"Remaining cones: {np.sum(combined_mask)}")
+
+        cone_colors = cone_colors[combined_mask]
+        cone_xyz = cone_xyz[combined_mask, :]
+        filtered_cone_array = np.concatenate([cone_colors, cone_xyz], axis=1)
+
+        return filtered_cone_array
+
+    def filter_gnss_and_cones(self, indices):
+        """
+        After matching image triplets to GNSS timestamps, we must remove the
+        non-matched timestamps and corresponding data entries
+        """
+        print("Filtering gnss")
+
+        # Pathing
+        src_gnss_folder_path = os.path.join(self.data_folder_path, "gnss")
+        dst_gnss_folder_path = os.path.join(self.data_folder_path,
+                                            "gnss_filtered")
+        dst_cones_folder_path = os.path.join(self.data_folder_path,
+                                             "cones_filtered")
+        os.makedirs(dst_cones_folder_path, exist_ok=True)
+        os.makedirs(dst_gnss_folder_path, exist_ok=True)
+
+        # Filter data by interpolation
+        gnss_data = np.fromfile(os.path.join(src_gnss_folder_path,
+                                             "gnss.bin")).reshape((-1, 6))
+        filtered_gnss_data = []
+        for timestamp_idx, ref_timestamp in enumerate(
+                self.reference_timestamps):
+            gnss_data_idx_1 = indices[timestamp_idx]
+            gnss_timestamp_1 = self.raw_gnss_timestamps[gnss_data_idx_1]
+            gnss_data_1 = gnss_data[gnss_data_idx_1, :]
+
+            # Determine whether to use PREV or NEXT data point for interp
+            if (gnss_timestamp_1 > ref_timestamp and gnss_data_idx_1 > 0) or \
+            (gnss_data_idx_1 == len(self.raw_gnss_timestamps)-1):
+                gnss_data_idx_2 = gnss_data_idx_1 - 1
+                gnss_data_2 = gnss_data[gnss_data_idx_2, :]
+                gnss_timestamp_2 = self.raw_gnss_timestamps[gnss_data_idx_2]
+
+            else:
+                gnss_data_idx_2 = gnss_data_idx_1 + 1
+                gnss_data_2 = gnss_data[gnss_data_idx_2, :]
+                gnss_timestamp_2 = self.raw_gnss_timestamps[gnss_data_idx_2]
+
+            gnss_data_ref = self.interp_gnss(
+                ref_timestamp, [gnss_timestamp_1, gnss_timestamp_2],
+                [gnss_data_1, gnss_data_2])
+            filtered_gnss_data.append(gnss_data_ref.tolist())
+
+        filtered_gnss_data = np.array(filtered_gnss_data)
+        filtered_gnss_data.tofile(
+            os.path.join(dst_gnss_folder_path, "gnss.bin"))
+
+        # Fetch cones and process them using filtered GNSS data
+        gtmd_fn = os.listdir(os.path.join(self.data_folder_path,
+                                          '../../gtmd'))[0]
+        gtmd_path = os.path.join(self.data_folder_path, '../../gtmd', gtmd_fn)
+        cone_array = self.parse_gtmd(gtmd_path)
+
+        for gnss_data_idx in range(filtered_gnss_data.shape[0]):
+            cone_array_local = self.filter_cones(cone_array,
+                                                 gnss_data[gnss_data_idx, :])
+            cone_array_local.tofile(
+                os.path.join(dst_cones_folder_path,
+                             str(gnss_data_idx).zfill(8) + '.bin'))
+
+        if not self.keep_orig_data_folders:
+            shutil.rmtree(src_gnss_folder_path)
+            os.rename(dst_gnss_folder_path, src_gnss_folder_path)
 
     def match_images_1(self):
         """
@@ -64,6 +239,7 @@ class DataPreprocesser:
             "forward_camera": [],
             "right_camera": [],
             "left_camera": [],
+            "gnss": []
         }
 
         for forward_camera_timestamp_idx, forward_camera_timestamp in enumerate(
@@ -96,20 +272,31 @@ class DataPreprocesser:
                     (forward_camera_timestamp, left_camera_timestamp,
                      right_camera_timestamp)):
 
-                    # Add the indices of the valid triple
-                    indices_dict["forward_camera"].append(
-                        forward_camera_timestamp_idx)
-                    indices_dict["right_camera"].append(
-                        right_camera_min_dtimestamp_idx)
-                    indices_dict["left_camera"].append(
-                        left_camera_min_dtimestamp_idx)
+                    mean_image_timestamp = np.mean([
+                        forward_camera_timestamp, left_camera_timestamp,
+                        right_camera_timestamp
+                    ])
 
-                    self.reference_timestamps.append(
-                        np.mean([
-                            forward_camera_timestamp, left_camera_timestamp,
-                            right_camera_timestamp
-                        ]))
+                    gnss_dtimestamps = np.abs(self.raw_gnss_timestamps -
+                                              mean_image_timestamp)
+                    gnss_min_dtimestamp_idx = np.argmin(gnss_dtimestamps)
+                    gnss_min_dtimestamp = gnss_dtimestamps[
+                        gnss_min_dtimestamp_idx]
 
+                    if gnss_min_dtimestamp < self.MAX_DTIMESTAMP_GNSS_THRESHOLD:
+                        # Add the indices of the valid image triple and gnss
+                        indices_dict["forward_camera"].append(
+                            forward_camera_timestamp_idx)
+                        indices_dict["right_camera"].append(
+                            right_camera_min_dtimestamp_idx)
+                        indices_dict["left_camera"].append(
+                            left_camera_min_dtimestamp_idx)
+                        indices_dict["gnss"].append(gnss_min_dtimestamp_idx)
+
+                        self.reference_timestamps.append(mean_image_timestamp)
+
+        self.filter_gnss_and_cones(indices_dict["gnss"])
+        del indices_dict["gnss"]
         self.filter_images_1(indices_dict)
 
     def match_images_2(self):
@@ -124,9 +311,14 @@ class DataPreprocesser:
         timestamp_arrays_dict = get_camera_timestamps(self.data_folder_path)
 
         indices_dict = {}
+
         # Initialization
-        for key in timestamp_arrays_dict.keys():
-            indices_dict[key] = []
+        indices_dict = {
+            "forward_camera": [],
+            "right_camera": [],
+            "left_camera": [],
+            "gnss": []
+        }
 
         timestamp_idx_id_array = np.empty((0, 3), dtype=np.float64)
 
@@ -145,7 +337,7 @@ class DataPreprocesser:
         idx = 0
         incomplete_data_counter = 0
         while idx < timestamp_idx_id_array.shape[0] - 2:
-            camera_ids = [0, 1, 2]
+            camera_ids = list(self.camera_id_dict.values())
 
             # First element
             ref_timestamp = timestamp_idx_id_array[idx, 0]
@@ -160,12 +352,24 @@ class DataPreprocesser:
             thi_idx = timestamp_idx_id_array[idx + 2, 1]
             thi_id = timestamp_idx_id_array[idx + 2, 2]
 
+            # Match to GNSS
+            gnss_dtimestamps = np.abs(self.raw_gnss_timestamps - ref_timestamp)
+            gnss_min_dtimestamp_idx = np.argmin(gnss_dtimestamps)
+            gnss_min_dtimestamp = gnss_dtimestamps[gnss_min_dtimestamp_idx]
+
+            # TODO: Decide on GNSS or image timestamp as reference?
+            if gnss_min_dtimestamp < self.MAX_DTIMESTAMP_GNSS_THRESHOLD:
+                indices_dict["gnss"].append(gnss_min_dtimestamp_idx)
+                self.reference_timestamps.append(ref_timestamp)
+
+            else:
+                # If there is no GT position of the car at the timestamp
+                idx += 1
+                continue
+
             # Insert first element
             indices_dict[self.id_camera_dict[ref_id]].append(int(ref_idx))
             camera_ids.remove(ref_id)
-
-            # Append timestamp
-            self.reference_timestamps.append(ref_timestamp)
 
             # Insert second element
             if sec_timestamp - ref_timestamp < self.MAX_DTIMESTAMP_THRESHOLD:
@@ -220,6 +424,8 @@ class DataPreprocesser:
             int(timestamp_idx_id_array[-1, 0] - timestamp_idx_id_array[0, 0]) *
             10))
 
+        self.filter_gnss_and_cones(indices_dict["gnss"])
+        del indices_dict["gnss"]
         self.filter_images_2(indices_dict)
 
     def filter_images_1(self, indices_dict):
@@ -359,13 +565,13 @@ class DataPreprocesser:
                 # recording of a point cloud. Instead of taking this time
                 # stamp, we add 0.05s to approximate the mean time stamp
                 # of all the points in the point cloud
-                timediff = (pc_timestamps + 0.05) - ref_timestamp
-                idx = np.abs(timediff).argmin()
+                timediff = np.abs((pc_timestamps + 0.05) - ref_timestamp)
+                min_idx = timediff.argmin()
 
-                if np.abs(timediff[idx]) > 0.1:
+                if timediff[min_idx] > 0.1:
                     indices_dict[key].append(-1)
                 else:
-                    indices_dict[key].append(idx)
+                    indices_dict[key].append(min_idx)
 
         self.filter_point_clouds(indices_dict)
 

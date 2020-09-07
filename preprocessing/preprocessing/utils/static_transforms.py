@@ -1,26 +1,27 @@
-# Static transformations during the season 2020
+# Static transformations during the season 2020 for each relevant testing day
+# The calibrations were manually refined afterwards the data was gathered
 
 fw_lidar_to_mrh_lidar = {
-    20200726111500: {
-        'x': 0.06188668,
-        'y': -1.9582512,
-        'z': -0.70326148,
-        'yaw': 3.13,
-        'pitch': -3.1066704,
-        'roll': 3.1143376
+    0: {
+        'x': 0.05,
+        'y': -2.0,
+        'z': -0.69,
+        'yaw': 3.143,
+        'pitch': -3.13,
+        'roll': 3.11
     },
-    20200627000000: {
-        'x': 0.06188668,
-        'y': -1.9582512,
-        'z': -0.70326148,
-        'yaw': -3.1390676,
-        'pitch': -3.1066704,
-        'roll': 3.1143376
+    20200705123531: {
+        'x': 0.05,
+        'y': -2.0,
+        'z': -0.69,
+        'yaw': 3.143,
+        'pitch': -3.13,
+        'roll': 3.11
     }
 }
 
 mrh_lidar_to_egomotion = {
-    20200726111500: {
+    0: {
         'x': -0.353,
         'y': 0.0,
         'z': 0.901,
@@ -28,11 +29,11 @@ mrh_lidar_to_egomotion = {
         'pitch': 0.0,
         'roll': 0.06
     },
-    20200627000000: {
+    20200726111500: {
         'x': -0.353,
-        'y': 0,
+        'y': 0.0,
         'z': 0.901,
-        'yaw': 1.570796326790,
+        'yaw': 1.56,
         'pitch': 0.0,
         'roll': 0.06
     }
