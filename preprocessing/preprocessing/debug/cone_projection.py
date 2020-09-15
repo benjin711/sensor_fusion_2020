@@ -1,8 +1,10 @@
+import pkg_resources
 import numpy as np
 import cv2 as cv
 import matplotlib.pyplot as plt
-from scipy.spatial.transform import Rotation as R
+from scipy.spatial.transform import Rotation as Rotation
 import os
+import csv
 
 from utils.utils import *
 
@@ -22,161 +24,158 @@ forward_calib = load_camera_calib(forward_calib_path)
 cone_path = os.path.join(cone_dir, str(index).zfill(8) + cone_ext)
 cone_data = np.fromfile(cone_path).reshape((-1, 4))
 cone_xyz = cone_data[:, 1:]
+cone_color = cone_data[:, 0]
 
 forward_img_path = os.path.join(forward_dir, str(index).zfill(8) + img_ext)
 forward_img = cv.imread(forward_img_path)
+forward_img = cv.undistort(forward_img, forward_calib['camera_matrix'],
+                           forward_calib['distortion_coefficients'])
 
-# Visualization Checks
-# cv.imshow(f"Do you see {cone_xyz.shape[0]} cones?", forward_img)
-# cv.waitKey(0)
-
-plt.scatter(cone_xyz[:, 0], cone_xyz[:, 1])
+# Check Cones and Image separately
+plt.figure()
+plt.imshow(forward_img)
+plt.figure()
+plt.scatter(cone_xyz[:, 0], cone_xyz[:, 2])
 plt.show()
 
-# Transform from egomotion to camera frame
-R_egomotion2forwardcamera = R.from_euler("zx", [-90, 90], degrees=True).as_matrix()
-x_trans, y_trans, z_trans = 0., 0., 0.
-x_rot, y_rot, z_rot = 0., 0., 0.
+def draw_points(image, points, K, R, T, window_name="Blank", pause=False):
+    points_xform = np.transpose(np.matmul(R, np.transpose(points)))
+    points_xform += np.transpose(T)
+    pixels = np.transpose(np.matmul(K, np.transpose(points_xform)))
+    pixels /= pixels[:, 2].reshape((-1, 1))
+    pixels = pixels.astype(np.int)
 
-R_correction = R.from_euler("zyx", [-2.5, -1.0, -1], degrees=True).as_matrix()
-R_total = np.matmul(R_correction, R_egomotion2forwardcamera)
+    new_image = image.copy()
+    for pixel_idx in range(pixels.shape[0]):
+        cv.circle(new_image, (pixels[pixel_idx, 0], pixels[pixel_idx, 1]),
+                  radius=2, color=(255, 0, 255), thickness=-1)
 
-def print_extrinsics():
-    print(f"R_x = {x_rot}")
-    print(f"R_y = {x_rot}")
-    print(f"R_z = {x_rot}")
-    print(f"T_x = {x_trans}")
-    print(f"T_y = {x_trans}")
-    print(f"T_z = {x_trans}")
-
-# Projection
-def draw_points(img, points, K):
-    """
-    Given an image and a set of points, draw each point using the projection matrix.
-    :param img: (R, C) image
-    :param points: (N, 3) array of 3D points
-    """
-    temp_img = img.copy()
-    img_points = np.matmul(K, np.transpose(points))
-    img_points /= img_points[2, :]
-    img_points = np.transpose(img_points)
-
-    in_bounds = 0
-    for point_index in range(points.shape[0]):
-        img_point = img_points[point_index, :]
-
-        if 0 <= img_point[0] <= img.shape[1] and 0 <= img_point[1] <= img.shape[1]:
-            in_bounds += 1
-            img = cv.circle(temp_img, (int(img_point[0]), int(img_point[1])), 2, (255, 0, 0), -1)
-
-    cv.imshow("Projection", temp_img)
+        if pause:
+            color_code = cone_color[pixel_idx]
+            if color_code == 0:
+                print('Blue')
+            elif color_code == 1:
+                print('Yellow')
+            print(pixel_idx)
+            cv.imshow(window_name, new_image)
+            cv.waitKey(0)
+            cv.destroyAllWindows()
+    cv.imshow(window_name, new_image)
     cv.waitKey(0)
 
-x_lims = [-1.0, 1.0]
-y_lims = [-1.0, 1.0]
-z_lims = [-1.0, 1.0]
-trans_resolution = 100
 
-def x_trackbar(x_bar_val):
-    global x_trans
+# # Initial Projection Check
+# R = np.eye(3)
+# T = np.array([0, 1.0, 0]).reshape((3, 1))
+# draw_points(forward_img, cone_xyz, forward_calib['camera_matrix'], R, T)
 
-    x_trans_new = (x_bar_val/trans_resolution)*(x_lims[1]-x_lims[0])+x_lims[0]
-    x_trans = x_trans_new
+# Correspondences
+pixels = [[715, 330],
+          [1027, 229],
+          [1116, 197],
+          [1672, 249],
+          [1201, 171],
+          [1542, 222],
+          [1471, 206],
+          [1283, 169],
+          [1545, 164]]
+pixels = np.asarray(pixels).astype(np.float64)
 
-    T = np.array([x_trans, y_trans, z_trans]).reshape((3, 1))
-    cone_xyz_new = np.transpose(np.matmul(R_total, np.transpose(cone_xyz)))
-    cone_xyz_new += np.transpose(T)
-    draw_points(forward_img, cone_xyz_new, forward_calib['camera_matrix'])
-    print_extrinsics()
+pixels2 = [[940, 261],
+           [1082, 210],
+           [1146, 189],
+           [1354, 177],
+           [1227, 170],
+           [1539, 175],
+           [1750, 163],
+           [2409, 166],
+           [2111, 185],
+           [2496, 223]]
+pixels2 = np.asarray(pixels2).astype(np.float64)
 
-def y_trackbar(y_bar_val):
-    global y_trans
+points_idxs2 = [0, 2, 4, 8, 15, 48, 22, 29, 64, 60]
+points2 = cone_xyz[points_idxs2, :]
+colors2 = cone_color[points_idxs2]
 
-    y_trans_new = (y_bar_val / trans_resolution) * (y_lims[1] - y_lims[0]) + \
-                  y_lims[0]
-    y_trans = y_trans_new
+points_idxs = [0, 2, 4, 42, 14, 43, 44, 16, 20]
+points = cone_xyz[points_idxs, :]
+colors = cone_color[points_idxs]
 
-    T = np.array([x_trans, y_trans, z_trans]).reshape((3, 1))
-    cone_xyz_new = np.transpose(np.matmul(R_total, np.transpose(cone_xyz)))
-    cone_xyz_new += np.transpose(T)
-    draw_points(forward_img, cone_xyz_new, forward_calib['camera_matrix'])
-    print_extrinsics()
+p3p_idxs = [0, 3, 5, 9]
+subset_idxs = [0, 3, 5, 9]
+pixels = pixels[:, :]
+points = points[:, :]
 
-def z_trackbar(z_bar_val):
-    global z_trans
+retval, rvec_p3p, tvec_p3p = cv2.solvePnP(points2[p3p_idxs, :], pixels2[p3p_idxs, :], forward_calib['camera_matrix'], forward_calib['distortion_coefficients'], flags=cv.SOLVEPNP_P3P)
+# Check P3P Solution
+rotmat_pnp, _ = cv.Rodrigues(rvec_p3p)
+tvec_pnp = tvec_p3p
+draw_points(forward_img, cone_xyz, forward_calib['camera_matrix'], rotmat_pnp, tvec_pnp, pause=False)
 
-    z_trans_new = (z_bar_val / trans_resolution) * (z_lims[1] - z_lims[0]) + \
-                  z_lims[0]
-    z_trans = z_trans_new
+# Apply P3P Solution
+cone_xyz = np.transpose(np.matmul(rotmat_pnp, np.transpose(cone_xyz)))
+cone_xyz += np.transpose(tvec_pnp)
 
-    T = np.array([x_trans, y_trans, z_trans]).reshape((3, 1))
-    cone_xyz_new = np.transpose(np.matmul(R_total, np.transpose(cone_xyz)))
-    cone_xyz_new += np.transpose(T)
-    draw_points(forward_img, cone_xyz_new, forward_calib['camera_matrix'])
-    print_extrinsics()
+# Correction
+dx, dy, dz = 0., 0., 0.
+dxr, dyr, dzr = 0., 0., 0.
+slider_max = 100
+ranges = {'dxr': 5, 'dyr': 5, 'dzr': 5,
+          'dx': 1.0, 'dy': 1.0, 'dz': 1.0}
+import sys
+sys.setrecursionlimit(15000)
 
-x_rot_lims = [-10., 10.]
-y_rot_lims = [-10., 10.]
-z_rot_lims = [-10., 10.]
-rot_resolution = 200
+def xr_trackbar(val):
+    global dxr
+    dxr = (val - slider_max/2)/slider_max*ranges['dxr']
+    R = Rotation.from_euler('xyz', [dxr, dyr, dzr], degrees=True).as_matrix()
+    T = np.array([dx, dy, dz]).reshape((3, 1))
+    draw_points(forward_img, cone_xyz, forward_calib['camera_matrix'], R, T, "Window")
 
-def x_rot_trackbar(x_bar_val):
-    global x_rot
+def yr_trackbar(val):
+    global dyr
+    dyr = (val - slider_max/2)/slider_max*ranges['dyr']
+    R = Rotation.from_euler('xyz', [dxr, dyr, dzr], degrees=True).as_matrix()
+    T = np.array([dx, dy, dz]).reshape((3, 1))
+    draw_points(forward_img, cone_xyz, forward_calib['camera_matrix'], R, T, "Window")
 
-    x_rot_new = (x_bar_val/trans_resolution)*(x_rot_lims[1]-x_rot_lims[0])+x_rot_lims[0]
-    x_rot = x_rot_new
+def zr_trackbar(val):
+    global dzr
+    dzr = (val - slider_max/2)/slider_max*ranges['dzr']
+    R = Rotation.from_euler('xyz', [dxr, dyr, dzr], degrees=True).as_matrix()
+    T = np.array([dx, dy, dz]).reshape((3, 1))
+    draw_points(forward_img, cone_xyz, forward_calib['camera_matrix'], R, T, "Window")
 
-    R_correction = R.from_euler("zyx", [z_rot, y_rot, x_rot],
-                                degrees=True).as_matrix()
-    R_total = np.matmul(R_correction, R_egomotion2forwardcamera)
-    T = np.array([x_trans, y_trans, z_trans]).reshape((3, 1))
+def x_trackbar(val):
+    global dx
+    dx = (val - slider_max / 2) / slider_max * ranges['dx']
+    R = Rotation.from_euler('xyz', [dxr, dyr, dzr], degrees=True).as_matrix()
+    T = np.array([dx, dy, dz]).reshape((3, 1))
+    draw_points(forward_img, cone_xyz, forward_calib['camera_matrix'], R, T,
+                "Window")
 
-    cone_xyz_new = np.transpose(np.matmul(R_total, np.transpose(cone_xyz)))
-    cone_xyz_new += np.transpose(T)
-    draw_points(forward_img, cone_xyz_new, forward_calib['camera_matrix'])
-    print_extrinsics()
+def y_trackbar(val):
+    global dy
+    dy = (val - slider_max / 2) / slider_max * ranges['dy']
+    R = Rotation.from_euler('xyz', [dxr, dyr, dzr], degrees=True).as_matrix()
+    T = np.array([dx, dy, dz]).reshape((3, 1))
+    draw_points(forward_img, cone_xyz, forward_calib['camera_matrix'], R, T,
+                "Window")
 
-def y_rot_trackbar(y_bar_val):
-    global y_rot
+def z_trackbar(val):
+    global dz
+    dz = (val - slider_max / 2) / slider_max * ranges['dz']
+    R = Rotation.from_euler('xyz', [dxr, dyr, dzr], degrees=True).as_matrix()
+    T = np.array([dx, dy, dz]).reshape((3, 1))
+    draw_points(forward_img, cone_xyz, forward_calib['camera_matrix'], R, T,
+                "Window")
 
-    y_rot_new = (y_bar_val / trans_resolution) * (y_rot_lims[1] - y_rot_lims[0]) + \
-                y_rot_lims[0]
-    y_rot = y_rot_new
-
-    R_correction = R.from_euler("zyx", [z_rot, y_rot, x_rot],
-                                degrees=True).as_matrix()
-    R_total = np.matmul(R_correction, R_egomotion2forwardcamera)
-    T = np.array([x_trans, y_trans, z_trans]).reshape((3, 1))
-
-    cone_xyz_new = np.transpose(np.matmul(R_total, np.transpose(cone_xyz)))
-    cone_xyz_new += np.transpose(T)
-    draw_points(forward_img, cone_xyz_new, forward_calib['camera_matrix'])
-    print_extrinsics()
-
-def z_rot_trackbar(z_bar_val):
-    global z_rot
-
-    z_rot_new = (z_bar_val / trans_resolution) * (z_rot_lims[1] - z_rot_lims[0]) + \
-                z_rot_lims[0]
-    z_rot = z_rot_new
-
-    R_correction = R.from_euler("zyx", [z_rot, y_rot, x_rot],
-                                degrees=True).as_matrix()
-    R_total = np.matmul(R_correction, R_egomotion2forwardcamera)
-    T = np.array([x_trans, y_trans, z_trans]).reshape((3, 1))
-
-    cone_xyz_new = np.transpose(np.matmul(R_total, np.transpose(cone_xyz)))
-    cone_xyz_new += np.transpose(T)
-    draw_points(forward_img, cone_xyz_new, forward_calib['camera_matrix'])
-    print_extrinsics()
-
-# draw_points(forward_img, cone_xyz, forward_calib['camera_matrix'])
-cv.namedWindow("Projection")
-cv.imshow("Projection", forward_img)
-cv.createTrackbar('X Translation', "Projection", 0, trans_resolution, x_trackbar)
-cv.createTrackbar('Y Translation', "Projection", 0, trans_resolution, y_trackbar)
-cv.createTrackbar('Z Translation', "Projection", 0, trans_resolution, z_trackbar)
-cv.createTrackbar('X Rotation', "Projection", 0, rot_resolution, x_rot_trackbar)
-cv.createTrackbar('Y Rotation', "Projection", 0, rot_resolution, y_rot_trackbar)
-cv.createTrackbar('Z Rotation', "Projection", 0, rot_resolution, z_rot_trackbar)
+cv.imshow("Window", forward_img)
+cv.createTrackbar("X Rotation", "Window" , slider_max//2, slider_max, xr_trackbar)
+cv.createTrackbar("Y Rotation", "Window" , slider_max//2, slider_max, yr_trackbar)
+cv.createTrackbar("Z Rotation", "Window" , slider_max//2, slider_max, zr_trackbar)
+cv.createTrackbar("X Translation", "Window" , slider_max//2, slider_max, x_trackbar)
+cv.createTrackbar("Y Translation", "Window" , slider_max//2, slider_max, y_trackbar)
+cv.createTrackbar("Z Translation", "Window" , slider_max//2, slider_max, z_trackbar)
 cv.waitKey()
+
