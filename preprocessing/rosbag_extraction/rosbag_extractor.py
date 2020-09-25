@@ -242,10 +242,12 @@ class RosbagExtractor:
                 transforms_dict[key] = (np.array(
                     transforms_dict[key])[driving_interval_mask]).tolist()
 
-        with open(os.path.join(data_dir, key + '.txt'), 'w') as filehandle:
-            # Write a header explaining the data
-            filehandle.writelines("timestamp, x, y, z, q_x, q_y, q_z, q_w")
-            for key in transforms_dict:
+        for key in transforms_dict:
+
+            with open(os.path.join(data_dir, key + '.txt'), 'w') as filehandle:
+                # Write a header explaining the data
+                filehandle.writelines("timestamp, x, y, z, q_x, q_y, q_z, q_w")
+
                 filehandle.writelines(
                     "{:.6f}, {}, {}, {}, {}, {}, {}, {}\n".format(
                         transform[0],
@@ -284,13 +286,13 @@ class RosbagExtractor:
                     continue
 
             lat = msg.RTK_latitude
-            long = msg.RTK_longitude
+            long_ = msg.RTK_longitude
             height = msg.RTK_height
             roll = msg.INS_roll
             pitch = msg.INS_pitch
             heading = msg.dual_heading
 
-            curr_pose = [long, lat, height, pitch, roll, heading]
+            curr_pose = [long_, lat, height, pitch, roll, heading]
             poses.append(curr_pose)
             timestamps.append(timestamp)
             counter += 1
