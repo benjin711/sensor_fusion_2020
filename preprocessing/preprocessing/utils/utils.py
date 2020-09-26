@@ -138,7 +138,7 @@ def read_dynamic_transformation(transform, data_folder_path):
     if transform == "egomotion_to_world":
         file_path = os.path.join(data_folder_path, "tf/egomotion_to_world.txt")
 
-        return np.loadtxt(file_path, delimiter=",")
+        return np.loadtxt(file_path, delimiter=",", skiprows=1)
 
     else:
         print("The requested dynamic transform doesn't exist")
