@@ -246,7 +246,8 @@ class RosbagExtractor:
 
             with open(os.path.join(data_dir, key + '.txt'), 'w') as filehandle:
                 # Write a header explaining the data
-                filehandle.writelines("timestamp, x, y, z, q_x, q_y, q_z, q_w")
+                filehandle.writelines(
+                    "timestamp, x, y, z, q_x, q_y, q_z, q_w\n")
 
                 filehandle.writelines(
                     "{:.6f}, {}, {}, {}, {}, {}, {}, {}\n".format(
