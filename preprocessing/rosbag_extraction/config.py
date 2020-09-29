@@ -33,7 +33,7 @@ def command_line_parser():
         '-p',
         '--point_cloud_file_format',
         type=str,
-        default='npy',
+        default='bin',
         choices=['npy', 'bin'],
         help='The point clouds can be extracted in numpys .npy or .bin format')
 

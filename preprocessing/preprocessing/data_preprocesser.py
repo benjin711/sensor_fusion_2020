@@ -1,5 +1,5 @@
 import os
-from utils.egomotion_compensator import *
+from utils.egomotion_compensator import EgomotionCompensator
 from utils.utils import *
 import numpy as np
 import sys
@@ -8,6 +8,7 @@ from scipy.spatial.transform import Rotation as R
 from scipy.spatial.transform import Slerp
 from scipy import interpolate
 import pymap3d
+import time
 
 
 class DataPreprocesser:
@@ -553,7 +554,10 @@ class DataPreprocesser:
         # Read in the timestamp files
         timestamp_arrays_dict = get_lidar_timestamps(self.data_folder_path)
 
+        # indices_dict is going to contain one array for each lidar. The array contains a
+        # point cloud idx for each reference timestamp
         indices_dict = {}
+
         # Initialization
         for key in timestamp_arrays_dict.keys():
             indices_dict[key] = []
@@ -578,10 +582,11 @@ class DataPreprocesser:
     def filter_point_clouds(self, indices_dict):
         """
         Creates a folder for each lidar and makes sure that
-        point clouds with the same index correspond to the same timestamp.
+        point clouds with the same index correspond to the same timestamp as images
+        with that index.
         The images should be matched before to get the reference timestamps.
         Additionally, this function adds empty point clouds when there was
-        not point cloud matching a reference time stamp.
+        no point cloud matching a reference time stamp.
         """
         for key in indices_dict:
             print("Filtering point clouds in folder {}".format(key))
@@ -630,9 +635,14 @@ class DataPreprocesser:
                     shutil.copy(src_point_cloud_filepath,
                                 dst_point_cloud_filepath)
 
+                    start = time.time()
                     self.egomotion_compensator.egomotion_compensation(
                         dst_point_cloud_filepath, key,
                         self.reference_timestamps[idx])
+                    end = time.time()
+                    print(
+                        "Motion compensating one point clouds takes: {:.2f}s".
+                        format(end - start))
                 else:
                     # Create an empty point cloud
                     dst_point_cloud_filepath = os.path.join(
