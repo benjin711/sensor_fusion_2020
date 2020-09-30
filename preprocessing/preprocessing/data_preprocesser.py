@@ -6,6 +6,7 @@ import sys
 from utils.static_transforms import *
 from scipy.spatial.transform import Rotation as R
 from scipy.spatial.transform import Slerp
+from scipy.ndimage.filters import uniform_filter1d
 from scipy import interpolate
 import pymap3d
 
@@ -26,7 +27,7 @@ class DataPreprocesser:
         self.height, self.width, _ = get_image_size(self.data_folder_path)
 
         self.raw_gnss_timestamps = None
-        self.load_gnss()
+        self.load_gnss_timestamps()
         self.reference_timestamps = []
 
         # Point cloud motion compensation
@@ -47,18 +48,32 @@ class DataPreprocesser:
             1: 'right_camera',
             2: 'left_camera'
         }
+        self.camera_transforms = {"left": np.eye(4), "right": np.eye(4)}
+        self.load_camera_transforms()
 
     def check_rosbag_extracted(self):
         return all(x in os.listdir(self.data_folder_path)
                    for x in self.expected_data_folders)
 
-    def load_gnss(self):
-        """
-        Matches each gnss message (20 Hz) to a group of images and pointclouds
-        (with corresponding timestamps).
+    def load_camera_transforms(self):
+        """Open the calibration YAMLs and compute the transform
+           from the forward camera to the left and right cameras."""
+        calib_left_forward = load_stereo_calib('./resources/left.yaml',
+                                               './resources/left_forward.yaml')
+        calib_right_forward = load_stereo_calib('./resources/right.yaml',
+                                                './resources/right_forward.yaml')
+        T_left_forward = np.eye(4)
+        T_left_forward[:3, :3] = calib_left_forward['rotation_matrix']
+        T_left_forward[:3, 3] = calib_left_forward['translation_vector'].reshape((3,))
+        T_right_forward = np.eye(4)
+        T_right_forward[:3, :3] = calib_right_forward['rotation_matrix']
+        T_right_forward[:3, 3] = calib_right_forward['translation_vector'].reshape((3,))
+        self.camera_transforms["left"] = np.linalg.inv(T_left_forward)
+        self.camera_transforms["right"] = np.linalg.inv(T_right_forward)
 
-        Determine 3D position of visible cones at each matched timestamp.
-        Write parsed cone positions and timestamps to a new data folder.
+    def load_gnss_timestamps(self):
+        """
+        Fetch GNSS timestamps. Save them as member variables
         """
 
         # Fetch GNSS timestamps
@@ -68,7 +83,7 @@ class DataPreprocesser:
             for timestamp in timestamps_file:
                 timestamp_array.append(timestamp)
             self.raw_gnss_timestamps = np.array(timestamp_array,
-                                                dtype=np.float)
+                                                dtype=np.float64)
 
     def interp_gnss(self, ref_timestamp, timestamps, gnss_data):
         """
@@ -77,9 +92,7 @@ class DataPreprocesser:
         """
         ref_gnss_data = np.zeros(gnss_data[0].shape)
         for data_idx in range(len(ref_gnss_data)):
-            f = interpolate.interp1d(
-                timestamps, [gnss_data[0][data_idx], gnss_data[1][data_idx]],
-                fill_value='extrapolate')
+            f= interpolate.Akima1DInterpolator(timestamps, gnss_data[:, data_idx])
             ref_gnss_data[data_idx] = f(ref_timestamp)
         return ref_gnss_data
 
@@ -114,48 +127,45 @@ class DataPreprocesser:
         [Color, Latitude, Longitude, Height, Variance], and the
         gnss data for the vehicle at an instance in time, determine the
         3D position of cones within the vehicle's HFOV at that instance.
+
+        GNSS data is formatted as:
+        [Latitude, Longitude, Height, INS pitch, INS roll, dual pitch, dual heading]
         """
+
         ell_wgs84 = pymap3d.Ellipsoid('wgs84')
         long_vehicle, lat_vehicle, h_vehicle = vehicle_gnss[:3]
-        pitch, roll, heading = vehicle_gnss[3:]
-        rotmat = R.from_euler('xyz', [pitch, roll, heading],
-                              degrees=True).as_matrix()
-        rotmat_enu2egomotion = R.from_euler('z', [90],
-                                            degrees=True).as_matrix()[0]
-        transvec_enu2egomotion = np.array([1.166, 0, 0]).reshape((1, 3))
-        hfov_half_vehicle = 80
+        INS_pitch, INS_roll, dual_pitch, dual_heading = vehicle_gnss[3:]
 
-        # Convert cones to ENU
+        # Only correct for heading
+        rotmat = R.from_euler('ZX', [dual_heading+180, 0],
+                              degrees=True).as_matrix()
+        rotmat_enu2fcam = R.from_euler('x', [90],
+                                       degrees=True).as_matrix()[0]
+
+        # Convert cones to ENU frame of vehicle
         cone_colors, cone_gps = cone_array[:, 0], cone_array[:, 1:4]
         cone_colors = np.expand_dims(cone_colors, axis=1)
         cone_enu, cone_xyz = np.zeros(cone_gps.shape), np.zeros(cone_gps.shape)
         for cone_idx in range(cone_gps.shape[0]):
-            cone_enu[cone_idx, :] = pymap3d.geodetic2enu(lat_vehicle,
-                                                         long_vehicle,
-                                                         h_vehicle,
-                                                         cone_gps[cone_idx, 0],
+            cone_enu[cone_idx, :] = pymap3d.geodetic2enu(cone_gps[cone_idx, 0],
                                                          cone_gps[cone_idx, 1],
                                                          cone_gps[cone_idx, 2],
+                                                         lat_vehicle,
+                                                         long_vehicle,
+                                                         h_vehicle,
                                                          ell=ell_wgs84,
                                                          deg=True)
-            cone_enu = np.matmul(cone_enu, np.transpose(rotmat))
-            cone_xyz = np.matmul(cone_enu, np.transpose(rotmat_enu2egomotion))
-            cone_xyz += transvec_enu2egomotion
+
+        # Correct cones for rotation (heading), then correct for translation (current vehicle position)
+        cone_enu2 = np.transpose(np.matmul(rotmat, np.transpose(cone_enu)))
+        cone_enu3 = np.transpose(np.matmul(rotmat_enu2fcam, np.transpose(cone_enu2)))
+        cone_fcam = cone_enu3
 
         # Remove cones behind the vehicle, and filter by FOV
-        forward_mask = cone_xyz[:, 0] > 0
-        cone_angles = np.rad2deg(np.arctan2(cone_xyz[:, 1], cone_xyz[:, 0]))
-        hfov_mask = np.logical_and(cone_angles > -hfov_half_vehicle,
-                                   cone_angles < hfov_half_vehicle)
-        combined_mask = np.logical_and(forward_mask, hfov_mask)
-
-        # Debug
-        # print(f"Initial cones: {cone_array.shape[0]}")
-        # print(f"Remaining cones: {np.sum(combined_mask)}")
-
-        cone_colors = cone_colors[combined_mask]
-        cone_xyz = cone_xyz[combined_mask, :]
-        filtered_cone_array = np.concatenate([cone_colors, cone_xyz], axis=1)
+        forward_mask = cone_fcam[:, 2] > 0
+        cone_colors = cone_colors[forward_mask]
+        cone_fcam = cone_fcam[forward_mask, :]
+        filtered_cone_array = np.concatenate([cone_colors, cone_fcam], axis=1)
 
         return filtered_cone_array
 
@@ -170,53 +180,75 @@ class DataPreprocesser:
         src_gnss_folder_path = os.path.join(self.data_folder_path, "gnss")
         dst_gnss_folder_path = os.path.join(self.data_folder_path,
                                             "gnss_filtered")
-        dst_cones_folder_path = os.path.join(self.data_folder_path,
-                                             "cones_filtered")
-        os.makedirs(dst_cones_folder_path, exist_ok=True)
+        dst_forward_cones_folder_path = os.path.join(self.data_folder_path,
+                                                     "forward_cones_filtered")
+        dst_left_cones_folder_path = os.path.join(self.data_folder_path,
+                                                  "left_cones_filtered")
+        dst_right_cones_folder_path = os.path.join(self.data_folder_path,
+                                                   "right_cones_filtered")
+        os.makedirs(dst_forward_cones_folder_path, exist_ok=True)
+        os.makedirs(dst_left_cones_folder_path, exist_ok=True)
+        os.makedirs(dst_right_cones_folder_path, exist_ok=True)
         os.makedirs(dst_gnss_folder_path, exist_ok=True)
 
         # Filter data by interpolation
+        init_gnss_data = np.fromfile(os.path.join(src_gnss_folder_path,
+                                                  'init_gnss.bin')).reshape((-1, 7))
+        init_gnss_data = init_gnss_data[0]
         gnss_data = np.fromfile(os.path.join(src_gnss_folder_path,
-                                             "gnss.bin")).reshape((-1, 6))
+                                             "gnss.bin")).reshape((-1, 7))
+
+        # Preprocess gnss dual heading to avoid wrapping past 0 and 360
+        threshold = 300
+        for i in range(1, gnss_data.shape[0]):
+            diff = gnss_data[i, 6] - gnss_data[i-1, 6]
+            if diff > threshold:
+                gnss_data[i, 6] -= 360
+            if diff < -threshold:
+                gnss_data[i, 6] += 360
+
+        # Smooth out the gnss dual pitch
+        gnss_data[:, 5] = uniform_filter1d(gnss_data[:, 5], 20)
+        gnss_data[:, 5] -= init_gnss_data[5]
+
         filtered_gnss_data = []
         for timestamp_idx, ref_timestamp in enumerate(
                 self.reference_timestamps):
-            gnss_data_idx_1 = indices[timestamp_idx]
-            gnss_timestamp_1 = self.raw_gnss_timestamps[gnss_data_idx_1]
-            gnss_data_1 = gnss_data[gnss_data_idx_1, :]
-
-            # Determine whether to use PREV or NEXT data point for interp
-            if (gnss_timestamp_1 > ref_timestamp and gnss_data_idx_1 > 0) or \
-            (gnss_data_idx_1 == len(self.raw_gnss_timestamps)-1):
-                gnss_data_idx_2 = gnss_data_idx_1 - 1
-                gnss_data_2 = gnss_data[gnss_data_idx_2, :]
-                gnss_timestamp_2 = self.raw_gnss_timestamps[gnss_data_idx_2]
-
-            else:
-                gnss_data_idx_2 = gnss_data_idx_1 + 1
-                gnss_data_2 = gnss_data[gnss_data_idx_2, :]
-                gnss_timestamp_2 = self.raw_gnss_timestamps[gnss_data_idx_2]
-
             gnss_data_ref = self.interp_gnss(
-                ref_timestamp, [gnss_timestamp_1, gnss_timestamp_2],
-                [gnss_data_1, gnss_data_2])
+                ref_timestamp, self.raw_gnss_timestamps, gnss_data)
             filtered_gnss_data.append(gnss_data_ref.tolist())
 
         filtered_gnss_data = np.array(filtered_gnss_data)
-        filtered_gnss_data.tofile(
-            os.path.join(dst_gnss_folder_path, "gnss.bin"))
+        filtered_gnss_data.tofile(os.path.join(dst_gnss_folder_path, "gnss.bin"))
 
-        # Fetch cones and process them using filtered GNSS data
+        # Fetch cones and process for the forward camera using filtered GNSS data
         gtmd_fn = os.listdir(os.path.join(self.data_folder_path,
                                           '../../gtmd'))[0]
         gtmd_path = os.path.join(self.data_folder_path, '../../gtmd', gtmd_fn)
         cone_array = self.parse_gtmd(gtmd_path)
 
         for gnss_data_idx in range(filtered_gnss_data.shape[0]):
-            cone_array_local = self.filter_cones(cone_array,
-                                                 gnss_data[gnss_data_idx, :])
-            cone_array_local.tofile(
-                os.path.join(dst_cones_folder_path,
+            forward_cone_array = self.filter_cones(cone_array,
+                                                   filtered_gnss_data[gnss_data_idx, :])
+            forward_cone_colors, forward_cone_xyz = forward_cone_array[:, 0], forward_cone_array[:, 1:]
+            forward_cone_colors = forward_cone_colors.reshape((-1, 1))
+
+            # Transform cones to left and right camera
+            ones = np.ones((forward_cone_xyz.shape[0], 1))
+            homo_cone_array = np.concatenate([forward_cone_xyz, ones], axis=1)
+            left_cone_xyz = np.transpose(np.matmul(self.camera_transforms["left"], np.transpose(homo_cone_array)))[:, :3]
+            left_cone_array = np.concatenate([forward_cone_colors, left_cone_xyz], axis=1)
+            right_cone_xyz = np.transpose(np.matmul(self.camera_transforms["right"], np.transpose(homo_cone_array)))[:, :3]
+            right_cone_array = np.concatenate([forward_cone_colors, right_cone_xyz], axis=1)
+
+            forward_cone_array.tofile(
+                os.path.join(dst_forward_cones_folder_path,
+                             str(gnss_data_idx).zfill(8) + '.bin'))
+            left_cone_array.tofile(
+                os.path.join(dst_left_cones_folder_path,
+                             str(gnss_data_idx).zfill(8) + '.bin'))
+            right_cone_array.tofile(
+                os.path.join(dst_right_cones_folder_path,
                              str(gnss_data_idx).zfill(8) + '.bin'))
 
         if not self.keep_orig_data_folders:
@@ -357,7 +389,6 @@ class DataPreprocesser:
             gnss_min_dtimestamp_idx = np.argmin(gnss_dtimestamps)
             gnss_min_dtimestamp = gnss_dtimestamps[gnss_min_dtimestamp_idx]
 
-            # TODO: Decide on GNSS or image timestamp as reference?
             if gnss_min_dtimestamp < self.MAX_DTIMESTAMP_GNSS_THRESHOLD:
                 indices_dict["gnss"].append(gnss_min_dtimestamp_idx)
                 self.reference_timestamps.append(ref_timestamp)
