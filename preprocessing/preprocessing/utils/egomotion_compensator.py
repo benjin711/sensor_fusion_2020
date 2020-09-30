@@ -2,19 +2,19 @@ from utils.utils import *
 from scipy.spatial.transform import Rotation as R
 from scipy.spatial.transform import Slerp
 from scipy import interpolate
+import os
+import sys
 
 
 class EgomotionCompensator:
     """
-    Provide point cloud file or point cloud that is not motion compensated
+    Provide point cloud that is not motion compensated
     Provide reference time stamp, source frame, 
     """
-    def __init__(self, data_folder_path):
-        self.T_fw_mrh = read_static_transformation("fw_lidar_to_mrh_lidar")
-        self.T_mrh_ego = read_static_transformation("mrh_lidar_to_egomotion")
 
-        self.T_mrh_fw = np.linalg.inv(self.T_fw_mrh)
-        self.T_ego_mrh = np.linalg.inv(self.T_mrh_ego)
+    def __init__(self, data_folder_path):
+        self.T = read_static_transformations(
+            data_folder_path)
 
         ego_wor_transformations = read_dynamic_transformation(
             "egomotion_to_world", data_folder_path)
@@ -47,7 +47,12 @@ class EgomotionCompensator:
         if src_frame == 'fw_lidar':
             # Transform each point from fw_lidar frame to the world frame
             # and then back to the mrh frame at reference time
-            T_fw_ego = self.T_mrh_ego @ self.T_fw_mrh
+            T_fw_ego = self.T["mrh_lidar_to_egomotion"] @ self.T["fw_lidar_to_mrh_lidar"]
+
+            # Bring all points from fw_lidar to the egomotion frame
+            points = np.hstack((point_cloud[:, :3], np.ones((point_cloud.shape[0], 1))))
+            point_cloud[:,:3] = (T_fw_ego @ points.T).T[:,:3]
+
             for idx in range(point_cloud.shape[0]):
                 p_xyz = point_cloud[idx][:3]
                 p_timestamp = point_cloud[idx][4]
@@ -60,13 +65,25 @@ class EgomotionCompensator:
                 T_ego_wor[:3, 3] = self.t_interpolator_ego_wor(p_timestamp)
                 T_ego_wor[3, 3] = 1
 
-                p_xyz_new = self.T_ego_mrh @ T_wor_ego @ T_ego_wor @ T_fw_ego @ np.append(
+                p_xyz_new = T_ego_wor @ np.append(
                     p_xyz, 1)
                 point_cloud[idx][:3] = p_xyz_new[:3]
+
+            # Bring all points from world to mrh_lidar frame
+            points = np.hstack((point_cloud[:, :3], np.ones((point_cloud.shape[0], 1))))
+            T_ego_mrh = np.linalg.inv(self.T["mrh_lidar_to_egomotion"])
+            point_cloud[:,:3] = (T_ego_mrh @ T_wor_ego @ points.T).T[:,:3]
+            
 
         elif src_frame == 'mrh_lidar':
             # Transform each point from mrh_lidar frame to the world frame
             # and then back to the mrh frame at reference time
+            T_mrh_ego = self.T["mrh_lidar_to_egomotion"]
+
+            # Bring all points from mrh_lidar to the egomotion frame
+            points = np.hstack((point_cloud[:, :3], np.ones((point_cloud.shape[0], 1))))
+            point_cloud[:,:3] = (T_mrh_ego @ points.T).T[:,:3]
+
             for idx in range(point_cloud.shape[0]):
                 p_xyz = point_cloud[idx][:3]
                 p_timestamp = point_cloud[idx][4]
@@ -76,12 +93,18 @@ class EgomotionCompensator:
                 T_ego_wor[:3, 3] = self.t_interpolator_ego_wor(p_timestamp)
                 T_ego_wor[3, 3] = 1
 
-                p_xyz_new = self.T_ego_mrh @ T_wor_ego @ T_ego_wor @ self.T_mrh_ego @ np.append(
+                p_xyz_new = T_ego_wor @ np.append(
                     p_xyz, 1)
                 point_cloud[idx][:3] = p_xyz_new[:3]
 
+            # Bring all points from world to mrh_lidar frame
+            points = np.hstack((point_cloud[:, :3], np.ones((point_cloud.shape[0], 1))))
+            T_ego_mrh = np.linalg.inv(self.T["mrh_lidar_to_egomotion"])
+            point_cloud[:,:3] = (T_ego_mrh @ T_wor_ego @ points.T).T[:,:3]
+
         else:
             print("Source frame not supported.")
+            sys.exit()
 
         # Write the point cloud back to file
         write_point_cloud(point_cloud_file, point_cloud)
