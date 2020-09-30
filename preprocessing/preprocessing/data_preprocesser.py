@@ -3,7 +3,6 @@ from utils.egomotion_compensator import EgomotionCompensator
 from utils.utils import *
 import numpy as np
 import sys
-from utils.static_transforms import *
 from scipy.spatial.transform import Rotation as R
 from scipy.spatial.transform import Slerp
 from scipy import interpolate
@@ -188,7 +187,7 @@ class DataPreprocesser:
 
             # Determine whether to use PREV or NEXT data point for interp
             if (gnss_timestamp_1 > ref_timestamp and gnss_data_idx_1 > 0) or \
-            (gnss_data_idx_1 == len(self.raw_gnss_timestamps)-1):
+                    (gnss_data_idx_1 == len(self.raw_gnss_timestamps)-1):
                 gnss_data_idx_2 = gnss_data_idx_1 - 1
                 gnss_data_2 = gnss_data[gnss_data_idx_2, :]
                 gnss_timestamp_2 = self.raw_gnss_timestamps[gnss_data_idx_2]
@@ -464,7 +463,6 @@ class DataPreprocesser:
             # For every idx copy the corresponding file to the new folder and name it according to the current idx in for loop
             pbar = tqdm(total=len(indices_dict[key]), desc=key)
             for idx, image_idx in enumerate(indices_dict[key]):
-                pbar.update(1)
                 src_image_filepath = os.path.join(src_image_folder_path,
                                                   filenames[image_idx])
 
@@ -472,6 +470,8 @@ class DataPreprocesser:
                                                   str(idx).zfill(8) + ".png")
 
                 shutil.copy(src_image_filepath, dst_image_filepath)
+
+                pbar.update(1)
 
             pbar.close()
 
@@ -518,7 +518,6 @@ class DataPreprocesser:
             # For every idx copy the corresponding file to the new folder and name it according to the current idx in for loop
             pbar = tqdm(total=len(indices_dict[key]), desc=key)
             for idx, image_idx in enumerate(indices_dict[key]):
-                pbar.update(1)
                 if image_idx != -1:
                     src_image_filepath = os.path.join(src_image_folder_path,
                                                       filenames[image_idx])
@@ -536,6 +535,8 @@ class DataPreprocesser:
                         str(idx).zfill(8) + ".png")
 
                     cv2.imwrite(dst_image_filepath, dummy_image)
+
+                pbar.update(1)
 
             pbar.close()
 
@@ -623,7 +624,6 @@ class DataPreprocesser:
             # For every idx copy the corresponding file to the new folder and name it according to the current idx in for loop
             pbar = tqdm(total=len(indices_dict[key]), desc=key)
             for idx, point_cloud_idx in enumerate(indices_dict[key]):
-                pbar.update(1)
                 if point_cloud_idx != -1:
                     src_point_cloud_filepath = os.path.join(
                         src_point_cloud_folder_path,
@@ -651,6 +651,8 @@ class DataPreprocesser:
 
                     with open(dst_point_cloud_filepath, 'w'):
                         pass
+                
+                pbar.update(1)
 
             pbar.close()
 
