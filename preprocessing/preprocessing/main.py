@@ -8,15 +8,15 @@ def main(cfg):
     # Then match point clouds to the triplets to create quintuples
     data_preprocesser_instance = DataPreprocesser(cfg)
     if cfg.match_data:
-        if cfg.perfect_data:
-            data_preprocesser_instance.match_images_1()
+        if not cfg.perfect_data:
+            data_preprocesser_instance.match_data_step_1()
         else:
-            data_preprocesser_instance.match_images_2()
+            data_preprocesser_instance.match_images_perfect_data()
 
-        data_preprocesser_instance.match_point_clouds()
+        data_preprocesser_instance.match_data_step_2()
 
     # Dump data_preprocessor
-    # with open('./preprocessing/preprocessing/data_preprocessor_instance.pkl',
+    # with open('./data_preprocessor_instance.pkl',
     #           'wb') as output_pkl:
     #     pickle.dump(data_preprocesser_instance,
     #                 output_pkl,

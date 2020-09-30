@@ -107,7 +107,7 @@ def read_static_transformations(data_folder_path):
         data_folder_path, "../../static_transformations/static_transformations.yaml")
 
     with open(static_transformation_file, "r") as yaml_file:
-        static_transformations = yaml.load(yaml_file)
+        static_transformations = yaml.load(yaml_file, Loader=yaml.FullLoader)
 
     for _, item in static_transformations.items():
         static_transformations = item
@@ -159,10 +159,10 @@ def load_stereo_calib(camera_fn, stereo_fn):
 
     calib = {}
     with open(camera_fn) as camera_f:
-        camera_data = yaml.load(camera_f)
+        camera_data = yaml.load(camera_f, Loader=yaml.FullLoader)
 
     with open(stereo_fn) as stereo_f:
-        stereo_data = yaml.load(stereo_f)
+        stereo_data = yaml.load(stereo_f, Loader=yaml.FullLoader)
 
     calib['camera_matrix'] = load_rosparam_mat(camera_data, 'camera_matrix')
     calib['distortion_coefficients'] = load_rosparam_mat(
