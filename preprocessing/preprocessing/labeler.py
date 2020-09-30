@@ -473,9 +473,9 @@ class LabelerControls(QDialog):
 
         # Tuning limits (meters, degrees) and number of ticks to use
         self.translation_range = 1.5
-        self.translation_res = 200
-        self.rotation_range = 90.
-        self.rotation_res = 200
+        self.translation_res = 500
+        self.rotation_range = 45.
+        self.rotation_res = 1000
 
         # Correspondences for solvePnP
         self.correspondences2D = []
@@ -485,15 +485,17 @@ class LabelerControls(QDialog):
         self.createTuningGroupBox()
         self.createSolvePnPGroupBox()
         self.createLabelGroupBox()
+        self.createArrowKeysGroupBox()
 
         mainLayout = QGridLayout()
         mainLayout.addWidget(self.initializationGroupBox, 0, 0, 1, 1)
-        mainLayout.addWidget(self.tuningGroupBox, 0, 1, 3, 1)
-        mainLayout.addWidget(self.solvePnPGroupBox, 1, 0, 1, 1)
-        mainLayout.addWidget(self.labelGroupBox, 2, 0, 1, 1)
+        mainLayout.addWidget(self.arrowKeysGroupBox, 1, 0, 1, 1)
+        mainLayout.addWidget(self.tuningGroupBox, 0, 1, 4, 1)
+        mainLayout.addWidget(self.solvePnPGroupBox, 2, 0, 1, 1)
+        mainLayout.addWidget(self.labelGroupBox, 3, 0, 1, 1)
         self.setLayout(mainLayout)
         self.setWindowTitle("Labeler Settings")
-        self.setFixedSize(800, 500)
+        self.setFixedSize(800, 600)
 
     def updateCorrespondencesCB(self):
         """Pull correspondence from imagePreview. Update labels."""
@@ -674,6 +676,37 @@ class LabelerControls(QDialog):
             print("Invalid transformation specified")
             return
 
+    def resetTuning(self):
+        self.sliderXTrans.setValue(self.translation_res // 2 - 1)
+        self.sliderYTrans.setValue(self.translation_res // 2 - 1)
+        self.sliderZTrans.setValue(self.translation_res // 2 - 1)
+        self.sliderXRot.setValue(self.rotation_res // 2 - 1)
+        self.sliderYRot.setValue(self.rotation_res // 2 - 1)
+        self.sliderZRot.setValue(self.rotation_res // 2 - 1)
+
+        self.updateTransform(Transform.XTRANS, self.sliderXTrans.value(),
+                             self.sliderXTransLabel)
+        self.updateTransform(Transform.YTRANS, self.sliderYTrans.value(),
+                             self.sliderYTransLabel)
+        self.updateTransform(Transform.ZTRANS, self.sliderZTrans.value(),
+                             self.sliderZTransLabel)
+        self.updateTransform(Transform.XROT, self.sliderXRot.value(),
+                             self.sliderXRotLabel)
+        self.updateTransform(Transform.YROT, self.sliderYRot.value(),
+                             self.sliderYRotLabel)
+        self.updateTransform(Transform.ZROT, self.sliderZRot.value(),
+                             self.sliderZRotLabel)
+
+    def lockinTransformCB(self):
+        """Apply the transform to the cone xyz, reset the transform to identity"""
+        cone_xyz = self.imagePreview.cone_array[:, 1:]
+        cone_ones = np.ones((cone_xyz.shape[0], 1))
+        homo_cone_xyz = np.concatenate([cone_xyz, cone_ones], axis=1)
+        homo_cone_xyz_new = np.transpose(np.matmul(self.imagePreview.transformationMatrix, np.transpose(homo_cone_xyz)))
+        cone_xyz_new = homo_cone_xyz_new[:, :3]
+        self.imagePreview.cone_array[:, 1:] = cone_xyz_new
+        self.resetTuning()
+
     def createTuningGroupBox(self):
         self.tuningGroupBox = QGroupBox("Transform Manual Tuning")
         numSliderRows = 5
@@ -698,57 +731,70 @@ class LabelerControls(QDialog):
         ZRotLabel.setMargin(0)
         ZRotLabel.setText("Z-R")
 
-        sliderXTransLabel = QLabel(self.tuningGroupBox)
-        sliderYTransLabel = QLabel(self.tuningGroupBox)
-        sliderZTransLabel = QLabel(self.tuningGroupBox)
-        sliderXRotLabel = QLabel(self.tuningGroupBox)
-        sliderYRotLabel = QLabel(self.tuningGroupBox)
-        sliderZRotLabel = QLabel(self.tuningGroupBox)
+        self.sliderXTransLabel = QLabel(self.tuningGroupBox)
+        self.sliderYTransLabel = QLabel(self.tuningGroupBox)
+        self.sliderZTransLabel = QLabel(self.tuningGroupBox)
+        self.sliderXRotLabel = QLabel(self.tuningGroupBox)
+        self.sliderYRotLabel = QLabel(self.tuningGroupBox)
+        self.sliderZRotLabel = QLabel(self.tuningGroupBox)
 
-        sliderXTrans = QSlider(Qt.Vertical, self.tuningGroupBox)
-        sliderXTrans.setMinimum(0)
-        sliderXTrans.setMaximum(self.translation_res)
-        sliderXTrans.setValue(self.translation_res//2 - 1)
-        sliderYTrans = QSlider(Qt.Vertical, self.tuningGroupBox)
-        sliderYTrans.setMinimum(0)
-        sliderYTrans.setMaximum(self.translation_res)
-        sliderYTrans.setValue(self.translation_res // 2 - 1)
-        sliderZTrans = QSlider(Qt.Vertical, self.tuningGroupBox)
-        sliderZTrans.setMinimum(0)
-        sliderZTrans.setMaximum(self.translation_res)
-        sliderZTrans.setValue(self.translation_res // 2 - 1)
+        self.sliderXTrans = QSlider(Qt.Vertical, self.tuningGroupBox)
+        self.sliderXTrans.setMinimum(0)
+        self.sliderXTrans.setMaximum(self.translation_res)
+        self.sliderXTrans.setValue(self.translation_res//2 - 1)
+        self.sliderYTrans = QSlider(Qt.Vertical, self.tuningGroupBox)
+        self.sliderYTrans.setMinimum(0)
+        self.sliderYTrans.setMaximum(self.translation_res)
+        self.sliderYTrans.setValue(self.translation_res // 2 - 1)
+        self.sliderZTrans = QSlider(Qt.Vertical, self.tuningGroupBox)
+        self.sliderZTrans.setMinimum(0)
+        self.sliderZTrans.setMaximum(self.translation_res)
+        self.sliderZTrans.setValue(self.translation_res // 2 - 1)
 
-        sliderXRot = QSlider(Qt.Vertical, self.tuningGroupBox)
-        sliderXRot.setMinimum(0)
-        sliderXRot.setMaximum(self.rotation_res)
-        sliderXRot.setValue(self.rotation_res // 2 - 1)
-        sliderXRot.size()
-        sliderYRot = QSlider(Qt.Vertical, self.tuningGroupBox)
-        sliderYRot.setMinimum(0)
-        sliderYRot.setMaximum(self.rotation_res)
-        sliderYRot.setValue(self.rotation_res // 2 - 1)
-        sliderZRot = QSlider(Qt.Vertical, self.tuningGroupBox)
-        sliderZRot.setMinimum(0)
-        sliderZRot.setMaximum(self.rotation_res)
-        sliderZRot.setValue(self.rotation_res // 2 - 1)
+        self.sliderXRot = QSlider(Qt.Vertical, self.tuningGroupBox)
+        self.sliderXRot.setMinimum(0)
+        self.sliderXRot.setMaximum(self.rotation_res)
+        self.sliderXRot.setValue(self.rotation_res // 2 - 1)
+        self.sliderXRot.size()
+        self.sliderYRot = QSlider(Qt.Vertical, self.tuningGroupBox)
+        self.sliderYRot.setMinimum(0)
+        self.sliderYRot.setMaximum(self.rotation_res)
+        self.sliderYRot.setValue(self.rotation_res // 2 - 1)
+        self.sliderZRot = QSlider(Qt.Vertical, self.tuningGroupBox)
+        self.sliderZRot.setMinimum(0)
+        self.sliderZRot.setMaximum(self.rotation_res)
+        self.sliderZRot.setValue(self.rotation_res // 2 - 1)
+
+        # Button for locking in the transform (Applying transform directly to cone data)
+        lockinTransformButton = QPushButton(self.tuningGroupBox)
+        lockinTransformButton.setText("Lock-in Transform (Ctrl+T)")
+        lockinTransformButton.clicked.connect(lambda: self.lockinTransformCB())
 
         # Callbacks
-        sliderXTrans.valueChanged.connect(lambda: self.updateTransform(Transform.XTRANS, sliderXTrans.value(), sliderXTransLabel))
-        sliderYTrans.valueChanged.connect(
-            lambda: self.updateTransform(Transform.YTRANS, sliderYTrans.value(),
-                                         sliderYTransLabel))
-        sliderZTrans.valueChanged.connect(
-            lambda: self.updateTransform(Transform.ZTRANS, sliderZTrans.value(),
-                                         sliderZTransLabel))
-        sliderXRot.valueChanged.connect(
-            lambda: self.updateTransform(Transform.XROT, sliderXRot.value(),
-                                         sliderXRotLabel))
-        sliderYRot.valueChanged.connect(
-            lambda: self.updateTransform(Transform.YROT, sliderYRot.value(),
-                                         sliderYRotLabel))
-        sliderZRot.valueChanged.connect(
-            lambda: self.updateTransform(Transform.ZROT, sliderZRot.value(),
-                                         sliderZRotLabel))
+        self.sliderXTrans.valueChanged.connect(
+            lambda: self.updateTransform(Transform.XTRANS,
+                                         self.sliderXTrans.value(),
+                                         self.sliderXTransLabel))
+        self.sliderYTrans.valueChanged.connect(
+            lambda: self.updateTransform(Transform.YTRANS,
+                                         self.sliderYTrans.value(),
+                                         self.sliderYTransLabel))
+        self.sliderZTrans.valueChanged.connect(
+            lambda: self.updateTransform(Transform.ZTRANS,
+                                         self.sliderZTrans.value(),
+                                         self.sliderZTransLabel))
+        self.sliderXRot.valueChanged.connect(
+            lambda: self.updateTransform(Transform.XROT,
+                                         self.sliderXRot.value(),
+                                         self.sliderXRotLabel))
+        self.sliderYRot.valueChanged.connect(
+            lambda: self.updateTransform(Transform.YROT,
+                                         self.sliderYRot.value(),
+                                         self.sliderYRotLabel))
+        self.sliderZRot.valueChanged.connect(
+            lambda: self.updateTransform(Transform.ZROT,
+                                         self.sliderZRot.value(),
+                                         self.sliderZRotLabel))
         # Add to layout
         layout = QGridLayout()
         layout.addWidget(XTransLabel, 0, 0, 1, 1)
@@ -757,34 +803,34 @@ class LabelerControls(QDialog):
         layout.addWidget(XRotLabel, 0, 3, 1, 1)
         layout.addWidget(YRotLabel, 0, 4, 1, 1)
         layout.addWidget(ZRotLabel, 0, 5, 1, 1)
-        layout.addWidget(sliderXTransLabel, 1, 0, 1, 1)
-        layout.addWidget(sliderYTransLabel, 1, 1, 1, 1)
-        layout.addWidget(sliderZTransLabel, 1, 2, 1, 1)
-        layout.addWidget(sliderXRotLabel, 1, 3, 1, 1)
-        layout.addWidget(sliderYRotLabel, 1, 4, 1, 1)
-        layout.addWidget(sliderZRotLabel, 1, 5, 1, 1)
-        layout.addWidget(sliderXTrans, 2, 0, numSliderRows, 1)
-        layout.addWidget(sliderYTrans, 2, 1, numSliderRows, 1)
-        layout.addWidget(sliderZTrans, 2, 2, numSliderRows, 1)
-        layout.addWidget(sliderXRot, 2, 3, numSliderRows, 1)
-        layout.addWidget(sliderYRot, 2, 4, numSliderRows, 1)
-        layout.addWidget(sliderZRot, 2, 5, numSliderRows, 1)
-        layout.setSpacing(0)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.sliderXTransLabel, 1, 0, 1, 1)
+        layout.addWidget(self.sliderYTransLabel, 1, 1, 1, 1)
+        layout.addWidget(self.sliderZTransLabel, 1, 2, 1, 1)
+        layout.addWidget(self.sliderXRotLabel, 1, 3, 1, 1)
+        layout.addWidget(self.sliderYRotLabel, 1, 4, 1, 1)
+        layout.addWidget(self.sliderZRotLabel, 1, 5, 1, 1)
+        layout.addWidget(self.sliderXTrans, 2, 0, numSliderRows, 1)
+        layout.addWidget(self.sliderYTrans, 2, 1, numSliderRows, 1)
+        layout.addWidget(self.sliderZTrans, 2, 2, numSliderRows, 1)
+        layout.addWidget(self.sliderXRot, 2, 3, numSliderRows, 1)
+        layout.addWidget(self.sliderYRot, 2, 4, numSliderRows, 1)
+        layout.addWidget(self.sliderZRot, 2, 5, numSliderRows, 1)
+        layout.addWidget(lockinTransformButton, numSliderRows+2, 0, 1, 6)
         self.tuningGroupBox.setLayout(layout)
 
         # Init the transforms
-        self.updateTransform(Transform.XTRANS, sliderXTrans.value(), sliderXTransLabel)
-        self.updateTransform(Transform.YTRANS, sliderYTrans.value(),
-                             sliderYTransLabel)
-        self.updateTransform(Transform.ZTRANS, sliderZTrans.value(),
-                             sliderZTransLabel)
-        self.updateTransform(Transform.XROT, sliderXRot.value(),
-                             sliderXRotLabel)
-        self.updateTransform(Transform.YROT, sliderYRot.value(),
-                             sliderYRotLabel)
-        self.updateTransform(Transform.ZROT, sliderZRot.value(),
-                             sliderZRotLabel)
+        self.updateTransform(Transform.XTRANS, self.sliderXTrans.value(),
+                             self.sliderXTransLabel)
+        self.updateTransform(Transform.YTRANS, self.sliderYTrans.value(),
+                             self.sliderYTransLabel)
+        self.updateTransform(Transform.ZTRANS, self.sliderZTrans.value(),
+                             self.sliderZTransLabel)
+        self.updateTransform(Transform.XROT, self.sliderXRot.value(),
+                             self.sliderXRotLabel)
+        self.updateTransform(Transform.YROT, self.sliderYRot.value(),
+                             self.sliderYRotLabel)
+        self.updateTransform(Transform.ZROT, self.sliderZRot.value(),
+                             self.sliderZRotLabel)
 
     def clearCorrespondencesCB(self, modeLabel, counterLabel):
         """Reset the correspondence list. Update the selectionState.
@@ -825,8 +871,8 @@ class LabelerControls(QDialog):
         newRotMat, _ = cv.Rodrigues(rvec)
         self.transformationMatrix[:3, :3] = newRotMat
         self.transformationMatrix[:3, 3] = tvec.reshape((3,))
-
         self.imagePreview.updatePreviewWithTransform(self.transformationMatrix)
+        self.lockinTransformCB()
 
     def createSolvePnPGroupBox(self):
         self.solvePnPGroupBox = QGroupBox("SolvePnP")
@@ -881,6 +927,34 @@ class LabelerControls(QDialog):
         layout.addWidget(self.showBoxesPushButton, 0, 0, 1, 1)
         layout.addWidget(self.generateLabelsPushButton, 1, 0, 1, 1)
         self.labelGroupBox.setLayout(layout)
+
+    def createArrowKeysGroupBox(self):
+        self.arrowKeysGroupBox = QGroupBox("")
+
+        leftPushButton = QPushButton(self.arrowKeysGroupBox)
+        leftPushButton.setText("Prev Img (Left)")
+        leftPushButton.clicked.connect(lambda: self.prevImageCB())
+
+        rightPushButton = QPushButton(self.arrowKeysGroupBox)
+        rightPushButton.setText("Next Img (Right)")
+        rightPushButton.clicked.connect(lambda: self.nextImageCB())
+
+        upPushButton = QPushButton(self.arrowKeysGroupBox)
+        upPushButton.setText("Zoom In (Up)")
+        upPushButton.clicked.connect(lambda: self.imagePreview.zoomIn())
+
+        downPushButton = QPushButton(self.arrowKeysGroupBox)
+        downPushButton.setText("Zoom Out (Down)")
+        downPushButton.clicked.connect(lambda: self.imagePreview.zoomOut())
+
+        layout = QGridLayout()
+        layout.addWidget(leftPushButton, 0, 0, 1, 1)
+        layout.addWidget(rightPushButton, 0, 1, 1, 1)
+        layout.addWidget(upPushButton, 1, 0, 1, 1)
+        layout.addWidget(downPushButton, 1, 1, 1, 1)
+
+        self.arrowKeysGroupBox.setLayout(layout)
+
 
 if __name__ == '__main__':
     import sys
