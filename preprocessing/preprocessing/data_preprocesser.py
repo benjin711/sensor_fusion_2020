@@ -137,7 +137,7 @@ class DataPreprocesser:
         INS_pitch, INS_roll, dual_pitch, dual_heading = vehicle_gnss[3:]
 
         # Only correct for heading
-        rotmat = R.from_euler('ZX', [dual_heading+180, 0],
+        rotmat = R.from_euler('zx', [dual_heading+180, dual_pitch],
                               degrees=True).as_matrix()
         rotmat_enu2fcam = R.from_euler('x', [90],
                                        degrees=True).as_matrix()[0]
