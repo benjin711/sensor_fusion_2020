@@ -223,7 +223,6 @@ class QImageViewer(QMainWindow):
             self.imageLabel.setPixmap(QPixmap.fromImage(self.imageWithCones))
             self.scaleFactor = 1.0
             self.scrollArea.setVisible(True)
-            self.printAct.setEnabled(True)
             self.fitToWindowAct.setEnabled(True)
             self.updateActions()
             self.resize(self.image.width() * self.scaleFactor,
@@ -305,7 +304,6 @@ class QImageViewer(QMainWindow):
 
             self.imageLabel.setPixmap(QPixmap.fromImage(image))
             self.scrollArea.setVisible(True)
-            self.printAct.setEnabled(True)
             self.fitToWindowAct.setEnabled(True)
             self.updateActions()
 
@@ -365,7 +363,8 @@ class QImageViewer(QMainWindow):
         self.useLastPnPAct = QAction("&Apply last solvePnP Solution...", self.parent, shortcut="Ctrl+P", enabled=True, triggered=self.parent.lastSolvePnPSolutionCB)
         self.generateLabelAct = QAction("&Generate labels...", self.parent, shortcut="Ctrl+L", enabled=True, triggered=self.generateLabels)
         self.showBoxesAct = QAction("&Show boxes...", self.parent, shortcut="Ctrl+B", enabled=True, triggered=self.showBoxes)
-        self.confirmSelectionAct = QAction("&Confirm selected point and append to correspondences...", self.parent, shortcut="Ctrl+Space", enabled=True, triggered=self.parent.updateCorrespondencesCB)
+        self.undoSelectionAct = QAction("&Undo previously selected point, remove from correspondences...", self.parent, shortcut="Ctrl+Z", enabled=True, triggered=self.parent.clickUndoCorrespondence)
+        self.confirmSelectionAct = QAction("&Confirm selected point and append to correspondences...", self.parent, shortcut="Ctrl+Space", enabled=True, triggered=self.parent.clickConfirmCorrespondence)
         self.nextImageAct = QAction("&Go to the next image...", self.parent, shortcut=Qt.Key_Right, enabled=True, triggered=self.parent.nextImageCB)
         self.prevImageAct = QAction("&Go to the prev image...", self.parent, shortcut=Qt.Key_Left, enabled=True, triggered=self.parent.prevImageCB)
         self.openAct = QAction("&Open...", self, shortcut="Ctrl+O", triggered=self.open)
@@ -386,6 +385,7 @@ class QImageViewer(QMainWindow):
         self.fileMenu.addAction(self.useLastPnPAct)
         self.fileMenu.addAction(self.generateLabelAct)
         self.fileMenu.addAction(self.showBoxesAct)
+        self.fileMenu.addAction(self.undoSelectionAct)
         self.fileMenu.addAction(self.confirmSelectionAct)
         self.fileMenu.addAction(self.nextImageAct)
         self.fileMenu.addAction(self.prevImageAct)
@@ -461,27 +461,28 @@ class LabelerControls(QDialog):
     def __init__(self, parent=None):
         super(LabelerControls, self).__init__(parent)
 
-        self.cameraName = "forward"
-        self.imageDir = ""
-        self.coneDir = ""
-        self.imageIndex = 0
-        self.imagePreview = QImageViewer(parent=self)
-        self.originalPalette = QApplication.palette()
-
-        # Initial Transform
-        self.eulerXYZ = [0., 0., 0.]
-        self.transformationMatrix = np.eye(4)
-        self.lastSolvePnPSolution = np.eye(4)
-
         # Tuning limits (meters, degrees) and number of ticks to use
         self.translation_range = 1.5
         self.translation_res = 500
         self.rotation_range = 45.
         self.rotation_res = 1000
 
+        # Initial Transform
+        self.eulerXYZ = [0., 0., 0.]
+        self.transformationMatrix = np.eye(4)
+        self.lastSolvePnPSolution = np.eye(4)
+
         # Correspondences for solvePnP
         self.correspondences2D = []
         self.correspondences3D = []
+
+        self.cameraName = "forward"
+        self.imageDir = ""
+        self.coneDir = ""
+        self.imageIndex = 0
+        self.originalPalette = QApplication.palette()
+        self.confirmPushButton, self.undoPushButton = QPushButton(), QPushButton
+        self.imagePreview = QImageViewer(parent=self)
 
         self.createInitializationGroupBox()
         self.createTuningGroupBox()
@@ -498,10 +499,6 @@ class LabelerControls(QDialog):
         self.setLayout(mainLayout)
         self.setWindowTitle("Labeler Settings")
         self.setFixedSize(800, 600)
-
-    def updateCorrespondencesCB(self):
-        """Pull correspondence from imagePreview. Update labels."""
-        self.confirmPushButton.click()
 
     def nextImageCB(self):
         # TODO: Check the number of images available
@@ -712,7 +709,7 @@ class LabelerControls(QDialog):
         self.imagePreview.updatePreviewWithTransform(self.transformationMatrix)
 
     def lastSolvePnPSolutionCB(self):
-        self.transformationMatrix = self.lastSolvePnPSolution
+        self.transformationMatrix = deepcopy(self.lastSolvePnPSolution)
         self.imagePreview.updatePreviewWithTransform(self.transformationMatrix)
         self.lockinTransformCB()
 
@@ -872,9 +869,30 @@ class LabelerControls(QDialog):
             modeLabel.setText("Being Selected: 2D")
             counterLabel.setText("# Correspondences: " + str(len(self.correspondences3D)))
 
+    def undoCorrespondencesCB(self, modeLabel, counterLabel):
+        if self.selectionState == "2D":
+            if len(self.correspondences3D) == 0:
+                return
+            self.correspondences3D.pop()
+            self.selectionState = "3D"
+            self.imagePreview.selectionState = self.selectionState
+            modeLabel.setText("Being Selected: 3D")
+            counterLabel.setText("# Correspondences: " + str(len(self.correspondences3D)))
+        else:
+            if len(self.correspondences2D) == 0:
+                return
+            self.correspondences2D.pop()
+            self.selectionState = "2D"
+            self.imagePreview.selectionState = self.selectionState
+            modeLabel.setText("Being Selected: 2D")
+
     def solvePnPCB(self):
         """Use current correspondences to run solvePnP, update the transformation
         then update the image preview"""
+        if len(self.correspondences3D) <= 6:
+            print("Select more than 6 correspondences please.")
+            return
+
         points = np.asarray(self.correspondences3D).reshape((-1, 1, 3)).astype(np.float32)
         pixels = np.asarray(self.correspondences2D).reshape((-1, 1, 2)).astype(np.float32)
         retval, rvec, tvec, inliers = cv.solvePnPRansac(points, pixels,
@@ -890,6 +908,12 @@ class LabelerControls(QDialog):
         self.imagePreview.updatePreviewWithTransform(self.transformationMatrix)
         self.lastSolvePnPSolution = deepcopy(self.transformationMatrix)
         self.lockinTransformCB()
+
+    def clickConfirmCorrespondence(self):
+        self.confirmPushButton.click()
+
+    def clickUndoCorrespondence(self):
+        self.undoPushButton.click()
 
     def createSolvePnPGroupBox(self):
         self.solvePnPGroupBox = QGroupBox("SolvePnP")
@@ -910,21 +934,27 @@ class LabelerControls(QDialog):
         self.confirmPushButton.setText("Confirm Current Selection (Ctrl+Space)")
         self.confirmPushButton.clicked.connect(
             lambda: self.confirmCorrespondencesCB(modeLabel, counterLabel))
-        self.confirmPushButton.setShortcut(Qt.Key_Y)
-        self.confirmPushButton.setShortcutEnabled(True)
+        self.confirmPushButton.setShortcut("Ctrl+Space")
+
+        self.undoPushButton = QPushButton(self.solvePnPGroupBox)
+        self.undoPushButton.setText("Undo Last Selection (Ctrl+Z)")
+        self.undoPushButton.clicked.connect(
+            lambda: self.undoCorrespondencesCB(modeLabel, counterLabel))
+        self.undoPushButton.setShortcut("Ctrl+Z")
 
         self.solvePushButton = QPushButton(self.solvePnPGroupBox)
-        self.solvePushButton.setText("solvePnP && Apply")
+        self.solvePushButton.setText("solvePnP && Apply (Ctrl+S)")
         self.solvePushButton.clicked.connect(
             lambda: self.solvePnPCB())
-        self.solvePushButton.setShortcut("S")
+        self.solvePushButton.setShortcut("Ctrl+S")
 
         layout = QGridLayout()
         layout.addWidget(modeLabel, 0, 0, 1, 1)
         layout.addWidget(counterLabel, 1, 0, 1, 1)
         layout.addWidget(self.confirmPushButton, 2, 0, 1, 1)
-        layout.addWidget(self.solvePushButton, 3, 0, 1, 1)
-        layout.addWidget(clearPushButton, 4, 0, 1, 1)
+        layout.addWidget(self.undoPushButton, 3, 0, 1, 1)
+        layout.addWidget(self.solvePushButton, 4, 0, 1, 1)
+        layout.addWidget(clearPushButton, 5, 0, 1, 1)
         self.solvePnPGroupBox.setLayout(layout)
 
     def createLabelGroupBox(self):
