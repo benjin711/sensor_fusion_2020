@@ -362,6 +362,7 @@ class QImageViewer(QMainWindow):
                           "print an image.</p>")
 
     def createActions(self):
+        self.useLastPnPAct = QAction("&Apply last solvePnP Solution...", self.parent, shortcut="Ctrl+P", enabled=True, triggered=self.parent.lastSolvePnPSolutionCB)
         self.generateLabelAct = QAction("&Generate labels...", self.parent, shortcut="Ctrl+L", enabled=True, triggered=self.generateLabels)
         self.showBoxesAct = QAction("&Show boxes...", self.parent, shortcut="Ctrl+B", enabled=True, triggered=self.showBoxes)
         self.confirmSelectionAct = QAction("&Confirm selected point and append to correspondences...", self.parent, shortcut="Ctrl+Space", enabled=True, triggered=self.parent.updateCorrespondencesCB)
@@ -371,7 +372,6 @@ class QImageViewer(QMainWindow):
         self.openConesAct = QAction("&Load Cones...", self, shortcut="Ctrl+C", triggered=self.open_cones)
         self.openCalibAct = QAction("&Load Camera Calibration...", self, shortcut="Ctrl+C", triggered=self.open_calibration)
         self.setDirectoryAct = QAction("&Set data folder...", self, shortcut="Ctr+D", triggered=self.set_datafolder)
-        self.printAct = QAction("&Print...", self, shortcut="Ctrl+P", enabled=False, triggered=self.print_)
         self.exitAct = QAction("E&xit", self, shortcut="Ctrl+Q", triggered=self.close)
         self.zoomInAct = QAction("Zoom &In (25%)", self, shortcut=Qt.Key_Up, enabled=True, triggered=self.zoomIn)
         self.zoomOutAct = QAction("Zoom &Out (25%)", self, shortcut=Qt.Key_Down, enabled=True, triggered=self.zoomOut)
@@ -383,12 +383,13 @@ class QImageViewer(QMainWindow):
 
     def createMenus(self):
         self.fileMenu = QMenu("&File", self)
+        self.fileMenu.addAction(self.useLastPnPAct)
+        self.fileMenu.addAction(self.generateLabelAct)
         self.fileMenu.addAction(self.showBoxesAct)
         self.fileMenu.addAction(self.confirmSelectionAct)
         self.fileMenu.addAction(self.nextImageAct)
         self.fileMenu.addAction(self.prevImageAct)
         self.fileMenu.addAction(self.openAct)
-        self.fileMenu.addAction(self.printAct)
         self.fileMenu.addSeparator()
         self.fileMenu.addAction(self.exitAct)
         self.fileMenu.addAction(self.openConesAct)
@@ -470,6 +471,7 @@ class LabelerControls(QDialog):
         # Initial Transform
         self.eulerXYZ = [0., 0., 0.]
         self.transformationMatrix = np.eye(4)
+        self.lastSolvePnPSolution = np.eye(4)
 
         # Tuning limits (meters, degrees) and number of ticks to use
         self.translation_range = 1.5
@@ -706,6 +708,13 @@ class LabelerControls(QDialog):
         cone_xyz_new = homo_cone_xyz_new[:, :3]
         self.imagePreview.cone_array[:, 1:] = cone_xyz_new
         self.resetTuning()
+        self.transformationMatrix = np.eye(4)
+        self.imagePreview.updatePreviewWithTransform(self.transformationMatrix)
+
+    def lastSolvePnPSolutionCB(self):
+        self.transformationMatrix = self.lastSolvePnPSolution
+        self.imagePreview.updatePreviewWithTransform(self.transformationMatrix)
+        self.lockinTransformCB()
 
     def createTuningGroupBox(self):
         self.tuningGroupBox = QGroupBox("Transform Manual Tuning")
@@ -769,6 +778,12 @@ class LabelerControls(QDialog):
         lockinTransformButton = QPushButton(self.tuningGroupBox)
         lockinTransformButton.setText("Lock-in Transform (Ctrl+T)")
         lockinTransformButton.clicked.connect(lambda: self.lockinTransformCB())
+        lockinTransformButton.setShortcut("Ctrl+T")
+
+        lastTransformButton = QPushButton(self.tuningGroupBox)
+        lastTransformButton.setText("Use Previous solvePnP Solution (Ctrl+P)")
+        lastTransformButton.clicked.connect(lambda: self.lastSolvePnPSolutionCB())
+        lastTransformButton.setShortcut("Ctrl+P")
 
         # Callbacks
         self.sliderXTrans.valueChanged.connect(
@@ -816,6 +831,7 @@ class LabelerControls(QDialog):
         layout.addWidget(self.sliderYRot, 2, 4, numSliderRows, 1)
         layout.addWidget(self.sliderZRot, 2, 5, numSliderRows, 1)
         layout.addWidget(lockinTransformButton, numSliderRows+2, 0, 1, 6)
+        layout.addWidget(lastTransformButton, numSliderRows+3, 0, 1, 6)
         self.tuningGroupBox.setLayout(layout)
 
         # Init the transforms
@@ -872,6 +888,7 @@ class LabelerControls(QDialog):
         self.transformationMatrix[:3, :3] = newRotMat
         self.transformationMatrix[:3, 3] = tvec.reshape((3,))
         self.imagePreview.updatePreviewWithTransform(self.transformationMatrix)
+        self.lastSolvePnPSolution = deepcopy(self.transformationMatrix)
         self.lockinTransformCB()
 
     def createSolvePnPGroupBox(self):
@@ -934,18 +951,22 @@ class LabelerControls(QDialog):
         leftPushButton = QPushButton(self.arrowKeysGroupBox)
         leftPushButton.setText("Prev Img (Left)")
         leftPushButton.clicked.connect(lambda: self.prevImageCB())
+        leftPushButton.setShortcut(Qt.Key_Left)
 
         rightPushButton = QPushButton(self.arrowKeysGroupBox)
         rightPushButton.setText("Next Img (Right)")
         rightPushButton.clicked.connect(lambda: self.nextImageCB())
+        rightPushButton.setShortcut(Qt.Key_Right)
 
         upPushButton = QPushButton(self.arrowKeysGroupBox)
         upPushButton.setText("Zoom In (Up)")
         upPushButton.clicked.connect(lambda: self.imagePreview.zoomIn())
+        upPushButton.setShortcut(Qt.Key_Up)
 
         downPushButton = QPushButton(self.arrowKeysGroupBox)
         downPushButton.setText("Zoom Out (Down)")
         downPushButton.clicked.connect(lambda: self.imagePreview.zoomOut())
+        downPushButton.setShortcut(Qt.Key_Down)
 
         layout = QGridLayout()
         layout.addWidget(leftPushButton, 0, 0, 1, 1)
