@@ -17,10 +17,20 @@ def command_line_parser():
     parser = argparse.ArgumentParser(
         add_help=True, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
+    parser.add_argument(
+        '--extract_all',
+        dest='extract_all',
+        action='store_true',
+        help='Extract all rosbags in the base_folder and its subdirectories')
+
+    parser.add_argument('-b',
+                        '--base_folder',
+                        type=str,
+                        help='Specify base folder where all data is stored')
+
     parser.add_argument('-r',
                         '--rosbag_file_path',
                         type=str,
-                        required=True,
                         help='Specify rosbag file path')
 
     parser.add_argument('-m',
@@ -41,8 +51,7 @@ def command_line_parser():
         '-t',
         '--topics',
         type=json.loads,
-        default=
-        '["/sensors/fw_lidar/point_cloud_raw", "/sensors/mrh_lidar/point_cloud_raw", "/sensors/right_camera/image_color", "/sensors/forward_camera/image_color", "/sensors/left_camera/image_color", "/tf", "/pilatus_can/GNSS"]',
+        default='["/sensors/fw_lidar/point_cloud_raw", "/sensors/mrh_lidar/point_cloud_raw", "/sensors/right_camera/image_color", "/sensors/forward_camera/image_color", "/sensors/left_camera/image_color", "/tf", "/pilatus_can/GNSS"]',
         help='Specify the topics that should be extracted from')
 
     cfg = parser.parse_args()
