@@ -26,7 +26,8 @@ def main():
         rosbag_file_paths.append(cfg.rosbag_file_path)
 
     for idx, rosbag_file_path in enumerate(rosbag_file_paths):
-        print("Rosbag: {}/{}".format(idx+1, len(rosbag_file_paths)))
+        print("\nRosbag {}: {}/{}".format(os.path.basename(rosbag_file_path), idx+1,
+                                          len(rosbag_file_paths)))
 
         cfg.rosbag_file_path = rosbag_file_path
 

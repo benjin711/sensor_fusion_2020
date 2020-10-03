@@ -25,11 +25,13 @@ def command_line_parser():
 
     parser.add_argument('-b',
                         '--base_folder',
+                        default="",
                         type=str,
                         help='Specify base folder where all data is stored')
 
     parser.add_argument('-r',
                         '--rosbag_file_path',
+                        default="",
                         type=str,
                         help='Specify rosbag file path')
 
