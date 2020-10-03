@@ -49,6 +49,8 @@ def main():
             data_preprocesser_instance.match_data_step_2(
                 cfg.motion_compensation)
 
+    ##### DEBUG #####
+
     # Dump data_preprocessor
     # with open('./data_preprocessor_instance.pkl',
     #           'wb') as output_pkl:

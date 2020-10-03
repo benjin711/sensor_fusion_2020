@@ -7,20 +7,27 @@ python2 -m virtualenv --system-site-packages venv
 ```
 
 ### Requirements
-The rosbags and gtmd.csv files are expected to be in a folder structure similar to the following for extraction. The extracted data will be in a folder called "data" in the folders of the respective testing days alongside the "gtmd" and "rosbags" folders. 
+The rosbags, gtmd.csv and static transformation files are expected to be in a folder structure similar to the following for extraction. The extracted data will be in a folder called "data" in the folders of the respective testing days alongside the "gtmd", "rosbags" and "static_transformations" folders. 
 ```
-amz_sensor_fusion_data/
+sensor_fusion_data/
 ├── 2020-07-05_tuggen
 │   ├── gtmd
 │   │   └── 2020-07-05_tuggen.csv
-│   └── rosbags
-│       ├── autocross_2020-07-05-12-35-31.bag
-│       └── autocross_2020-07-05-18-13-26.bag
-└── 2020-07-08_duebendorf
-    ├── gtmd
-    │   └── 2020-07-08_duebendorf.csv
-    └── rosbags
-        └── autocross_2020-07-08-09-02-59.bag
+│   ├── rosbags
+│   │   ├── autocross_2020-07-05-11-58-07.bag
+│   │   ├── autocross_2020-07-05-12-35-31.bag
+│   │   └── autocross_2020-07-05-13-57-26.bag
+│   └── static_transformations
+│       └── static_transformations.yaml
+├── 2020-07-08_duebendorf
+│   ├── gtmd
+│   │   ├── 2020-07-08_duebendorf_edited.csv
+│   │   └── 2020-07-08_duebendorf_faulty.csv
+│   ├── rosbags
+│   │   └── autocross_2020-07-08-09-53-46.bag
+│   └── static_transformations
+│       └── static_transformations.yaml
+
 ```
 There is no requirements.txt file because with the --system-site-packages flag, all potentially unnecessary system site packages get displayed as well. Here is a list of packages that work for me:
 
@@ -31,12 +38,18 @@ rosbag 1.14.6
 numpy 1.13.3
 
 ### Usage 
+To extract from one specific rosbag, do:
 ```
-python preprocessing/rosbag_extraction/main.py -h
+source venv/bin/activate
+python -r <rosbag_file_path> 
+```
 
-python preprocessing/rosbag_extraction/main.py -r <rosbag_file_path> 
+To extract from all rosbags within the base folder, do:
+```
+source venv/bin/activate
+python --extract_all -b <base_folder>
 ```
 
 ### Issues & Next Steps
-- It should be possible to specify several rosbags to extract from, instead of just one at a time
+- /
 
