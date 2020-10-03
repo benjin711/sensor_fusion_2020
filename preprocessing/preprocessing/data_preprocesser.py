@@ -13,9 +13,9 @@ class DataPreprocesser:
     def __init__(self, cfg):
         self.data_folder_path = cfg.data_folder_path
 
+        # "fw_lidar", "mrh_lidar" folders do not have to exist
         self.expected_data_folders = [
-            "tf", "gnss", "fw_lidar", "mrh_lidar", "forward_camera",
-            "right_camera", "left_camera"
+            "tf", "gnss", "forward_camera", "right_camera", "left_camera"
         ]
         if not self.check_rosbag_extracted():
             print("Rosbag doesn't seem to have been extracted yet.")

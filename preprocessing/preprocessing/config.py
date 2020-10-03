@@ -19,10 +19,22 @@ def command_line_parser():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Preprocess image and point cloud data.')
 
+    parser.add_argument(
+        '--preprocess_all',
+        dest='preprocess_all',
+        action='store_true',
+        help='Extract all rosbags in the base_folder and its subdirectories')
+
+    parser.add_argument('-b',
+                        '--base_folder',
+                        default="",
+                        type=str,
+                        help='Specify base folder where all data is stored')
+
     parser.add_argument('-d',
                         '--data_folder_path',
                         type=str,
-                        required=True,
+                        default="",
                         help='Specify rosbag data folder path')
 
     parser.add_argument(

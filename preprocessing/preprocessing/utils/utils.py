@@ -22,10 +22,17 @@ def get_camera_timestamps(data_folder_path):
 
 
 def get_lidar_timestamps(data_folder_path):
-    timestamp_filepaths_dict = {
-        "fw_lidar": os.path.join(data_folder_path, "fw_lidar/timestamps.txt"),
-        "mrh_lidar": os.path.join(data_folder_path, "mrh_lidar/timestamps.txt")
-    }
+    timestamp_filepaths_dict = {}
+
+    if os.path.exists(os.path.join(data_folder_path,
+                                   "fw_lidar/timestamps.txt")):
+        timestamp_filepaths_dict["fw_lidar"] = os.path.join(
+            data_folder_path, "fw_lidar/timestamps.txt")
+
+    if os.path.exists(
+            os.path.join(data_folder_path, "mrh_lidar/timestamps.txt")):
+        timestamp_filepaths_dict["mrh_lidar"] = os.path.join(
+            data_folder_path, "mrh_lidar/timestamps.txt")
 
     return read_timestamps(timestamp_filepaths_dict)
 
@@ -104,7 +111,8 @@ def write_point_cloud(point_cloud_file, point_cloud):
 def read_static_transformations(data_folder_path):
 
     static_transformation_file = os.path.join(
-        data_folder_path, "../../static_transformations/static_transformations.yaml")
+        data_folder_path,
+        "../../static_transformations/static_transformations.yaml")
 
     with open(static_transformation_file, "r") as yaml_file:
         static_transformations = yaml.load(yaml_file, Loader=yaml.FullLoader)
