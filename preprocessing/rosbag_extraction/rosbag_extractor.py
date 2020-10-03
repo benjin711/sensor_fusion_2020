@@ -80,10 +80,16 @@ class RosbagExtractor:
         return 1
 
     def extract(self, topic):
+
+        # Check if the topic exists in the rosbag
+        try:
+            msg_type = self.type_and_topic_info[1][str(topic)].msg_type
+        except:
+            print("Topic {} doesn't exist in current bag!".format(topic))
+            return
+
         print("Started extraction of topic {} in {}.".format(
             topic, self.rosbag_filename))
-
-        msg_type = self.type_and_topic_info[1][str(topic)].msg_type
 
         if msg_type == "sensor_msgs/PointCloud2":
             print("Extracting point clouds, {} format".format(

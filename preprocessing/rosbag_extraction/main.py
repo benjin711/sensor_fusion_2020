@@ -7,12 +7,12 @@ import sys
 def main():
     cfg = command_line_parser()
 
+    rosbag_file_paths = []
+
     if cfg.extract_all:
         if not os.path.exists(cfg.base_folder):
             print("The specified base folder does not exist!")
             sys.exit()
-
-        rosbag_file_paths = []
 
         for root, dirs, files in os.walk(cfg.base_folder):
             for f in files:
@@ -26,7 +26,7 @@ def main():
         rosbag_file_paths.append(cfg.rosbag_file_path)
 
     for idx, rosbag_file_path in enumerate(rosbag_file_paths):
-        print("Iteration: {}/{}".format(idx+1, len(rosbag_file_paths)))
+        print("Rosbag: {}/{}".format(idx+1, len(rosbag_file_paths)))
 
         cfg.rosbag_file_path = rosbag_file_path
 
