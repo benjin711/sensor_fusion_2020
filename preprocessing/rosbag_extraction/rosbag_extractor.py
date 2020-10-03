@@ -232,15 +232,15 @@ class RosbagExtractor:
             self.timestamp_started_driving, self.timestamp_stopped_driving = get_driving_interval(
                 transforms_dict["egomotion_to_world"])
 
-            # Filter transform_dict using timestamp filter
-            for key in transforms_dict:
-                driving_interval_mask = [
-                    transform[0] > self.timestamp_started_driving
-                    and transform[0] < self.timestamp_stopped_driving
-                    for transform in transforms_dict[key]
-                ]
-                transforms_dict[key] = (np.array(
-                    transforms_dict[key])[driving_interval_mask]).tolist()
+            # # Filter transform_dict using timestamp filter
+            # for key in transforms_dict:
+            #     driving_interval_mask = [
+            #         transform[0] > self.timestamp_started_driving
+            #         and transform[0] < self.timestamp_stopped_driving
+            #         for transform in transforms_dict[key]
+            #     ]
+            #     transforms_dict[key] = (np.array(
+            #         transforms_dict[key])[driving_interval_mask]).tolist()
 
         for key in transforms_dict:
 
