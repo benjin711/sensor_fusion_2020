@@ -244,7 +244,7 @@ class DataPreprocesser:
                 shutil.rmtree(src_image_folder_path)
                 os.rename(dst_image_folder_path, src_image_folder_path)
 
-    def match_data_step_2(self):
+    def match_data_step_2(self, motion_compensation):
         """
         Matches the timewise closest point cloud to each image triple. The result is
         that images and point clouds with the same index in their folders go together.
@@ -275,9 +275,9 @@ class DataPreprocesser:
                 else:
                     indices_dict[key].append(min_idx)
 
-        self.filter_point_clouds(indices_dict)
+        self.filter_point_clouds(indices_dict, motion_compensation)
 
-    def filter_point_clouds(self, indices_dict):
+    def filter_point_clouds(self, indices_dict, motion_compensation):
         """
         Creates a folder for each lidar and makes sure that
         point clouds with the same index correspond to the same timestamp as images
@@ -286,21 +286,25 @@ class DataPreprocesser:
         Additionally, this function adds empty point clouds when there was
         no point cloud matching a reference time stamp.
         """
+        if motion_compensation:
+            folder_extension = "_filtered"
+        else:
+            folder_extension = "_filtered_no_mc"
+
         for key in indices_dict:
             print("Filtering point clouds in folder {}".format(key))
             src_point_cloud_folder_path = os.path.join(self.data_folder_path,
                                                        key)
             dst_point_cloud_folder_path = os.path.join(self.data_folder_path,
-                                                       key + "_filtered")
+                                                       key + folder_extension)
 
             # Create a filtered folder to copy the correct point clouds to
             if os.path.exists(dst_point_cloud_folder_path):
                 print(
-                    "The folder {}_filtered exist already indicating that the data has already been matched!"
-                    .format(key))
-                print(
-                    "{}_filtered will be removed and the data will be rematched."
-                    .format(key))
+                    "The folder {}{} exist already indicating that the data has already been matched!"
+                    .format(key, folder_extension))
+                print("{}{} will be removed and the data will be rematched.".
+                      format(key, folder_extension))
                 shutil.rmtree(dst_point_cloud_folder_path)
             os.makedirs(dst_point_cloud_folder_path)
 
@@ -334,7 +338,8 @@ class DataPreprocesser:
 
                     self.egomotion_compensator.egomotion_compensation(
                         dst_point_cloud_filepath, key,
-                        self.reference_timestamps[idx])
+                        self.reference_timestamps[idx], motion_compensation)
+
                 else:
                     # Create an empty point cloud
                     dst_point_cloud_filepath = os.path.join(

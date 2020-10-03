@@ -47,6 +47,12 @@ def command_line_parser():
         action='store_true',
         help='Discard timestamps when at least one camera failed ')
 
+    parser.add_argument('-m',
+                        '--motion_compensation',
+                        type=str2bool,
+                        default=True,
+                        help='Specify rosbag data folder path')
+
     cfg = parser.parse_args()
 
     return cfg

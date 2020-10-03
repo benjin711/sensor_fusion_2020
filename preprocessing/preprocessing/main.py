@@ -3,7 +3,9 @@ from data_preprocesser import DataPreprocesser
 import pickle
 
 
-def main(cfg):
+def main():
+    cfg = command_line_parser()
+
     # Match images to triplets and generate the corresponding reference timestamps
     # Then match point clouds to the triplets to create quintuples
     data_preprocesser_instance = DataPreprocesser(cfg)
@@ -13,7 +15,7 @@ def main(cfg):
         else:
             data_preprocesser_instance.match_images_perfect_data()
 
-        data_preprocesser_instance.match_data_step_2()
+        data_preprocesser_instance.match_data_step_2(cfg.motion_compensation)
 
     # Dump data_preprocessor
     # with open('./data_preprocessor_instance.pkl',
@@ -38,5 +40,4 @@ def main(cfg):
 
 
 if __name__ == "__main__":
-    cfg = command_line_parser()
-    main(cfg)
+    main()

@@ -28,7 +28,7 @@ class EgomotionCompensator:
             assume_sorted=True)
 
     def egomotion_compensation(self, point_cloud_file, src_frame,
-                               reference_timestamp):
+                               reference_timestamp, motion_compensation):
         """
         Transforms points from fw_lidar or mrh_lidar frame to the egomotion frame
         at the time of the reference_timestamp
@@ -50,36 +50,48 @@ class EgomotionCompensator:
         T_ego_wor[:, 3, 3] = 1
 
         # Determine T_wor_ego(reference_timestamp)
-        T_ego_wor = np.zeros((4, 4))
-        T_ego_wor[:3, :3] = self.R_slerp_ego_wor(
+        T_ego_wor_ref_t = np.zeros((4, 4))
+        T_ego_wor_ref_t[:3, :3] = self.R_slerp_ego_wor(
             reference_timestamp).as_matrix()
-        T_ego_wor[:3, 3] = self.t_interpolator_ego_wor(reference_timestamp)
-        T_ego_wor[3, 3] = 1
-        T_wor_ego = np.linalg.inv(T_ego_wor)
+        T_ego_wor_ref_t[:3,
+                        3] = self.t_interpolator_ego_wor(reference_timestamp)
+        T_ego_wor_ref_t[3, 3] = 1
+        T_wor_ego = np.linalg.inv(T_ego_wor_ref_t)
 
         # Determine static T_ego_mrh
         T_ego_mrh = np.linalg.inv(self.T["mrh_lidar_to_egomotion"])
 
         if src_frame == 'fw_lidar':
-            # Transform each point from fw_lidar frame to the world frame
-            # and then back to the mrh frame at reference time
-            T_fw_world_mrh = T_ego_mrh @ T_wor_ego @ T_ego_wor @ T_mrh_ego @ T_fw_mrh
 
-            points = np.hstack(
-                (point_cloud[:, :3], np.ones((point_cloud.shape[0], 1))))
-            points = (T_fw_world_mrh @ points.T).T
-            point_cloud[:, :3] = points[:, :3]
+            if motion_compensation:
+                # Transform each point from fw_lidar frame to the world frame
+                # and then back to the mrh frame at reference time
+                T_fw_world_mrh = T_ego_mrh @ T_wor_ego @ T_ego_wor @ T_mrh_ego @ T_fw_mrh
+
+                points = np.hstack(
+                    (point_cloud[:, :3], np.ones((point_cloud.shape[0], 1))))
+                points = (T_fw_world_mrh @ np.expand_dims(points, axis=2))
+                point_cloud[:, :3] = np.squeeze(points)[:, :3]
+            else:
+                points = np.hstack(
+                    (point_cloud[:, :3], np.ones((point_cloud.shape[0], 1))))
+                points = (T_fw_mrh @ points.T).T
+                point_cloud[:, :3] = points[:, :3]
 
         elif src_frame == 'mrh_lidar':
-            # Transform each point from mrh_lidar frame to the world frame
-            # and then back to the mrh frame at reference time
-            T_mrh_world_mrh = T_ego_mrh @ T_wor_ego @ T_ego_wor @ T_mrh_ego
 
-            # Bring all points from mrh_lidar to the egomotion frame
-            points = np.hstack(
-                (point_cloud[:, :3], np.ones((point_cloud.shape[0], 1))))
-            points = (T_mrh_ego @ points.T).T
-            point_cloud[:, :3] = points[:, :3]
+            if motion_compensation:
+                # Transform each point from mrh_lidar frame to the world frame
+                # and then back to the mrh frame at reference time
+                T_mrh_world_mrh = T_ego_mrh @ T_wor_ego @ T_ego_wor @ T_mrh_ego
+
+                # Bring all points from mrh_lidar to the egomotion frame
+                points = np.hstack(
+                    (point_cloud[:, :3], np.ones((point_cloud.shape[0], 1))))
+                points = (T_mrh_world_mrh @ np.expand_dims(points, axis=2))
+                point_cloud[:, :3] = np.squeeze(points)[:, :3]
+            else:
+                pass  # dont do shit
 
         else:
             print("Source frame not supported.")
