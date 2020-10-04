@@ -80,10 +80,16 @@ class RosbagExtractor:
         return 1
 
     def extract(self, topic):
+
+        # Check if the topic exists in the rosbag
+        try:
+            msg_type = self.type_and_topic_info[1][str(topic)].msg_type
+        except:
+            print("Topic {} doesn't exist in current bag!".format(topic))
+            return
+
         print("Started extraction of topic {} in {}.".format(
             topic, self.rosbag_filename))
-
-        msg_type = self.type_and_topic_info[1][str(topic)].msg_type
 
         if msg_type == "sensor_msgs/PointCloud2":
             print("Extracting point clouds, {} format".format(
@@ -232,20 +238,13 @@ class RosbagExtractor:
             self.timestamp_started_driving, self.timestamp_stopped_driving = get_driving_interval(
                 transforms_dict["egomotion_to_world"])
 
-            # Filter transform_dict using timestamp filter
-            for key in transforms_dict:
-                driving_interval_mask = [
-                    transform[0] > self.timestamp_started_driving
-                    and transform[0] < self.timestamp_stopped_driving
-                    for transform in transforms_dict[key]
-                ]
-                transforms_dict[key] = (np.array(
-                    transforms_dict[key])[driving_interval_mask]).tolist()
+        for key in transforms_dict:
 
-        with open(os.path.join(data_dir, key + '.txt'), 'w') as filehandle:
-            # Write a header explaining the data
-            filehandle.writelines("timestamp, x, y, z, q_x, q_y, q_z, q_w")
-            for key in transforms_dict:
+            with open(os.path.join(data_dir, key + '.txt'), 'w') as filehandle:
+                # Write a header explaining the data
+                filehandle.writelines(
+                    "timestamp, x, y, z, q_x, q_y, q_z, q_w\n")
+
                 filehandle.writelines(
                     "{:.6f}, {}, {}, {}, {}, {}, {}, {}\n".format(
                         transform[0],
@@ -284,13 +283,13 @@ class RosbagExtractor:
                     continue
 
             lat = msg.RTK_latitude
-            long = msg.RTK_longitude
+            longitude = msg.RTK_longitude
             height = msg.RTK_height
             roll = msg.INS_roll
             pitch = msg.INS_pitch
             heading = msg.dual_heading
 
-            curr_pose = [long, lat, height, pitch, roll, heading]
+            curr_pose = [longitude, lat, height, pitch, roll, heading]
             poses.append(curr_pose)
             timestamps.append(timestamp)
             counter += 1

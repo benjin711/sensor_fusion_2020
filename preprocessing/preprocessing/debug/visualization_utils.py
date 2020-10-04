@@ -1,6 +1,7 @@
 import open3d as o3d
 import numpy as np
 import os
+import sys
 
 
 def read_point_cloud(point_cloud_file):
@@ -19,23 +20,31 @@ def read_point_cloud(point_cloud_file):
     return point_cloud
 
 
-fw_pc = read_point_cloud(
-    "/home/benjin/Desktop/autocross_2020-07-05-12-35-31/fw_lidar_filtered/00000001.bin"
-)
+counter = 100
 
-mrh_pc = read_point_cloud(
-    "/home/benjin/Desktop/autocross_2020-07-05-12-35-31/mrh_lidar_filtered/00000001.bin"
-)
+while True:
 
-fw_pcd = o3d.geometry.PointCloud()
-fw_pcd.points = o3d.utility.Vector3dVector(fw_pc[:, :3])
-fw_pcd.paint_uniform_color(np.array([255, 0, 0]))
+    fw_pc_filtered = read_point_cloud(
+        "/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-07-12_tuggen/data/autocross_2020-07-12-09-54-31/mrh_lidar_filtered/"
+        + str(counter).zfill(8) + ".bin")
 
-mrh_pcd = o3d.geometry.PointCloud()
-mrh_pcd.points = o3d.utility.Vector3dVector(mrh_pc[:, :3])
-mrh_pcd.paint_uniform_color(np.array([0, 255, 0]))
+    fw_pc_filtered_no_mc = read_point_cloud(
+        "/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-07-12_tuggen/data/autocross_2020-07-12-09-54-31/mrh_lidar_filtered_no_mc/"
+        + str(counter).zfill(8) + ".bin")
 
-mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
-    size=0.6, origin=[0, 0, 0])
+    fw_pcd_filtered = o3d.geometry.PointCloud()
+    fw_pcd_filtered.points = o3d.utility.Vector3dVector(fw_pc_filtered[:, :3])
+    fw_pcd_filtered.paint_uniform_color(np.array([1, 0, 0]))
 
-o3d.visualization.draw_geometries([fw_pcd, mrh_pcd, mesh_frame])
+    fw_pcd_filtered_no_mc = o3d.geometry.PointCloud()
+    fw_pcd_filtered_no_mc.points = o3d.utility.Vector3dVector(
+        fw_pc_filtered_no_mc[:, :3])
+    fw_pcd_filtered_no_mc.paint_uniform_color(np.array([0, 1, 0]))
+
+    mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
+        size=0.6, origin=[0, 0, 0])
+
+    o3d.visualization.draw_geometries(
+        [fw_pcd_filtered_no_mc, fw_pcd_filtered, mesh_frame])
+
+    counter += 1

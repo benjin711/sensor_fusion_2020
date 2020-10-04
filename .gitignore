@@ -1,6 +1,8 @@
 # Python Bytecode
 __pycache__
 **.pyc
+.ipynb_checkpoints
+**.ipynb
 
 # IDE
 .vscode

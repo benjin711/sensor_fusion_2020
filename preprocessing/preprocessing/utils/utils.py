@@ -5,7 +5,6 @@ import cv2
 import shutil
 from tqdm import tqdm
 import sys
-from utils.static_transforms import *
 from scipy.spatial.transform import Rotation as R
 
 
@@ -23,10 +22,17 @@ def get_camera_timestamps(data_folder_path):
 
 
 def get_lidar_timestamps(data_folder_path):
-    timestamp_filepaths_dict = {
-        "fw_lidar": os.path.join(data_folder_path, "fw_lidar/timestamps.txt"),
-        "mrh_lidar": os.path.join(data_folder_path, "mrh_lidar/timestamps.txt")
-    }
+    timestamp_filepaths_dict = {}
+
+    if os.path.exists(os.path.join(data_folder_path,
+                                   "fw_lidar/timestamps.txt")):
+        timestamp_filepaths_dict["fw_lidar"] = os.path.join(
+            data_folder_path, "fw_lidar/timestamps.txt")
+
+    if os.path.exists(
+            os.path.join(data_folder_path, "mrh_lidar/timestamps.txt")):
+        timestamp_filepaths_dict["mrh_lidar"] = os.path.join(
+            data_folder_path, "mrh_lidar/timestamps.txt")
 
     return read_timestamps(timestamp_filepaths_dict)
 
@@ -102,43 +108,43 @@ def write_point_cloud(point_cloud_file, point_cloud):
         print("Saving in specified point cloud format is not possible.")
 
 
-def read_static_transformation(transform):
-    if transform == "fw_lidar_to_mrh_lidar":
-        yaw = fw_lidar_to_mrh_lidar[0]['yaw']
-        pitch = fw_lidar_to_mrh_lidar[0]['pitch']
-        roll = fw_lidar_to_mrh_lidar[0]['roll']
-        x = fw_lidar_to_mrh_lidar[0]['x']
-        y = fw_lidar_to_mrh_lidar[0]['y']
-        z = fw_lidar_to_mrh_lidar[0]['z']
+def read_static_transformations(data_folder_path):
+
+    static_transformation_file = os.path.join(
+        data_folder_path,
+        "../../static_transformations/static_transformations.yaml")
+
+    with open(static_transformation_file, "r") as yaml_file:
+        static_transformations = yaml.load(yaml_file, Loader=yaml.FullLoader)
+
+    for _, item in static_transformations.items():
+        static_transformations = item
+
+    for name, transformation in static_transformations.items():
+        yaw = transformation['rotation']['yaw']
+        pitch = transformation['rotation']['pitch']
+        roll = transformation['rotation']['roll']
+        x = transformation['translation']['x']
+        y = transformation['translation']['y']
+        z = transformation['translation']['z']
         r = R.from_euler('zyx', [yaw, pitch, roll], degrees=False)
         t = np.array([x, y, z])
 
-    elif transform == "mrh_lidar_to_egomotion":
-        yaw = mrh_lidar_to_egomotion[0]['yaw']
-        pitch = mrh_lidar_to_egomotion[0]['pitch']
-        roll = mrh_lidar_to_egomotion[0]['roll']
-        x = mrh_lidar_to_egomotion[0]['x']
-        y = mrh_lidar_to_egomotion[0]['y']
-        z = mrh_lidar_to_egomotion[0]['z']
-        r = R.from_euler('zyx', [yaw, pitch, roll], degrees=False)
-        t = np.array([x, y, z])
+        T = np.zeros((4, 4))
+        T[:3, :3] = r.as_matrix()
+        T[:3, 3] = t
+        T[3, 3] = 1
 
-    else:
-        print("The requested static transform doesn't exist")
+        static_transformations[name] = T
 
-    T = np.zeros((4, 4))
-    T[:3, :3] = r.as_matrix()
-    T[:3, 3] = t
-    T[3, 3] = 1
-
-    return T
+    return static_transformations
 
 
 def read_dynamic_transformation(transform, data_folder_path):
     if transform == "egomotion_to_world":
         file_path = os.path.join(data_folder_path, "tf/egomotion_to_world.txt")
 
-        return np.loadtxt(file_path, delimiter=",")
+        return np.loadtxt(file_path, delimiter=",", skiprows=1)
 
     else:
         print("The requested dynamic transform doesn't exist")
@@ -161,10 +167,10 @@ def load_stereo_calib(camera_fn, stereo_fn):
 
     calib = {}
     with open(camera_fn) as camera_f:
-        camera_data = yaml.load(camera_f)
+        camera_data = yaml.load(camera_f, Loader=yaml.FullLoader)
 
     with open(stereo_fn) as stereo_f:
-        stereo_data = yaml.load(stereo_f)
+        stereo_data = yaml.load(stereo_f, Loader=yaml.FullLoader)
 
     calib['camera_matrix'] = load_rosparam_mat(camera_data, 'camera_matrix')
     calib['distortion_coefficients'] = load_rosparam_mat(
