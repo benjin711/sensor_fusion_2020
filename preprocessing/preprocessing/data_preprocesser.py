@@ -129,10 +129,10 @@ class DataPreprocesser:
 
     def filter_images(self, indices_dict):
         """
-        Creates a folder for each camera and makes sure that
-        images with the same index correspond to the same timestamp.
-        Additionally, this function adds dummy images.
-        """
+                Creates a folder for each camera and makes sure that
+                images with the same index correspond to the same timestamp.
+                Additionally, this function adds dummy images.
+                """
         for key in indices_dict:
             print("Filtering images in folder {}".format(key))
             src_image_folder_path = os.path.join(self.data_folder_path, key)
@@ -143,10 +143,10 @@ class DataPreprocesser:
             if os.path.exists(dst_image_folder_path):
                 print(
                     "The folder {}_filtered exist already indicating that the data has already been matched!"
-                    .format(key))
+                        .format(key))
                 print(
                     "{}_filtered will be removed and the data will be rematched."
-                    .format(key))
+                        .format(key))
                 shutil.rmtree(dst_image_folder_path)
             os.makedirs(dst_image_folder_path)
 

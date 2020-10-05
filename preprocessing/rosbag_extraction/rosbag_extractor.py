@@ -211,7 +211,7 @@ class RosbagExtractor:
 
             for transform in msg.transforms:
 
-                # Seperate different transformations from each other
+                # Separate different transformations from each other
                 key = transform.child_frame_id + "_to_" + transform.header.frame_id
                 if not transforms_dict.has_key(key):
                     transforms_dict[key] = []
@@ -245,6 +245,16 @@ class RosbagExtractor:
                 filehandle.writelines(
                     "timestamp, x, y, z, q_x, q_y, q_z, q_w\n")
 
+            # Filter transform_dict using timestamp filter
+            for key in transforms_dict:
+                driving_interval_mask = [
+                    transform[0] > self.timestamp_started_driving
+                    and transform[0] < self.timestamp_stopped_driving
+                    for transform in transforms_dict[key]
+                ]
+                transforms_dict[key] = (np.array(
+                    transforms_dict[key])[driving_interval_mask]).tolist()
+
                 filehandle.writelines(
                     "{:.6f}, {}, {}, {}, {}, {}, {}, {}\n".format(
                         transform[0],
@@ -271,6 +281,8 @@ class RosbagExtractor:
         counter = 0
         timestamps = []
         poses = []
+        initial_pose = np.zeros((1, 7))
+        initial_pose_count = 0
 
         for _, msg, _ in self.bag.read_messages(topics=[topic]):
             pbar.update(1)
@@ -278,16 +290,25 @@ class RosbagExtractor:
             timestamp = float("{}.{}".format(
                 str(msg.header.stamp.secs),
                 str(msg.header.stamp.nsecs).zfill(9)))
-            if self.moving_only_flag:
-                if timestamp < self.timestamp_started_driving or timestamp > self.timestamp_stopped_driving:
-                    continue
 
             lat = msg.RTK_latitude
             longitude = msg.RTK_longitude
             height = msg.RTK_height
-            roll = msg.INS_roll
-            pitch = msg.INS_pitch
-            heading = msg.dual_heading
+            INS_roll = msg.INS_roll
+            INS_pitch = msg.INS_pitch
+            dual_pitch = msg.dual_pitch
+            dual_heading = msg.dual_heading
+            curr_pose = [long, lat, height, INS_pitch, INS_roll, dual_pitch,
+                         dual_heading]
+
+            if self.moving_only_flag:
+                if timestamp < self.timestamp_started_driving:
+                    initial_pose += np.asarray(curr_pose)
+                    initial_pose_count += 1
+                    continue
+
+                elif timestamp > self.timestamp_stopped_driving:
+                    continue
 
             curr_pose = [longitude, lat, height, pitch, roll, heading]
             poses.append(curr_pose)
@@ -296,8 +317,11 @@ class RosbagExtractor:
 
         pbar.close()
 
+        init_filepath = os.path.join(data_dir, 'init_gnss.bin')
+        initial_pose /= initial_pose_count
+        initial_pose.tofile(init_filepath)
         filepath = os.path.join(data_dir, 'gnss.bin')
-        pose_arr = np.array(poses).reshape((counter, 6)).tofile(filepath)
+        pose_arr = np.array(poses).reshape((counter, 7)).tofile(filepath)
 
         with open(os.path.join(data_dir, 'timestamps.txt'), 'w') as filehandle:
             filehandle.writelines("{:.6f}\n".format(timestamp)
