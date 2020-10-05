@@ -69,8 +69,7 @@ class DataPreprocesser:
         indices_dict = {
             "forward_camera": [],
             "right_camera": [],
-            "left_camera": [],
-            "gnss": []
+            "left_camera": []
         }
 
         for forward_camera_timestamp_idx, forward_camera_timestamp in enumerate(
@@ -122,13 +121,11 @@ class DataPreprocesser:
                             right_camera_min_dtimestamp_idx)
                         indices_dict["left_camera"].append(
                             left_camera_min_dtimestamp_idx)
-                        indices_dict["gnss"].append(gnss_min_dtimestamp_idx)
 
                         self.reference_timestamps.append(mean_image_timestamp)
 
-        self.filter_gnss_and_cones(indices_dict["gnss"])
-        del indices_dict["gnss"]
-        self.filter_images_1(indices_dict)
+        self.filter_gnss_and_cones()
+        self.filter_images(indices_dict)
 
     def filter_images(self, indices_dict):
         """
@@ -331,11 +328,7 @@ class DataPreprocesser:
         self.camera_transforms["right"] = np.linalg.inv(T_right_forward)
 
     def load_gnss_timestamps(self):
-        """
-        Fetch GNSS timestamps. Save them as member variables
-        """
-
-        # Fetch GNSS timestamps
+        """Fetch GNSS timestamps. Save them as member variables."""
         timestamp_array = []
         with open(os.path.join(self.data_folder_path, "gnss/timestamps.txt"),
                   'r') as timestamps_file:
@@ -346,7 +339,7 @@ class DataPreprocesser:
 
     def interp_gnss(self, ref_timestamp, timestamps, gnss_data):
         """
-        Given two timestamps and two gnss data points, interpolate
+        Given two timestamps and the gnss data, interpolate
         the gnss data at the ref_timestamp.
         """
         ref_gnss_data = np.zeros(gnss_data[0].shape)
@@ -367,14 +360,10 @@ class DataPreprocesser:
         gtmd_data = np.genfromtxt(gtmd_path, delimiter=',', dtype=None)
         gtmd_array = np.zeros((len(gtmd_data), 5))
         for idx, gtmd_entry in enumerate(gtmd_data):
-            # Parse Color
             color = gtmd_entry[0].decode("utf-8")
-            if color == 'Blue':
-                gtmd_array[idx, 0] = 0
-            elif color == 'Yellow':
-                gtmd_array[idx, 0] = 1
-            else:
-                gtmd_array[idx, 0] = 2
+            if color == 'Blue': gtmd_array[idx, 0] = 0
+            elif color == 'Yellow': gtmd_array[idx, 0] = 1
+            else: gtmd_array[idx, 0] = 2
 
             # Parse Lat, Long, Height, Variance
             for col_idx in range(1, 5):
@@ -391,13 +380,12 @@ class DataPreprocesser:
         GNSS data is formatted as:
         [Latitude, Longitude, Height, INS pitch, INS roll, dual pitch, dual heading]
         """
-
         ell_wgs84 = pymap3d.Ellipsoid('wgs84')
         long_vehicle, lat_vehicle, h_vehicle = vehicle_gnss[:3]
         INS_pitch, INS_roll, dual_pitch, dual_heading = vehicle_gnss[3:]
 
         # Only correct for heading
-        rotmat = R.from_euler('ZX', [dual_heading + 180, 0],
+        rotmat = R.from_euler('ZX', [dual_heading + 180, dual_pitch],
                               degrees=True).as_matrix()
         rotmat_enu2fcam = R.from_euler('x', [90],
                                        degrees=True).as_matrix()[0]
@@ -416,7 +404,7 @@ class DataPreprocesser:
                                                          ell=ell_wgs84,
                                                          deg=True)
 
-        # Correct cones for rotation (heading), then correct for translation (current vehicle position)
+        # Correct cones for rotation, then correct for translation (current vehicle position)
         cone_enu2 = np.transpose(np.matmul(rotmat, np.transpose(cone_enu)))
         cone_enu3 = np.transpose(
             np.matmul(rotmat_enu2fcam, np.transpose(cone_enu2)))
@@ -430,14 +418,12 @@ class DataPreprocesser:
 
         return filtered_cone_array
 
-    def filter_gnss_and_cones(self, indices):
+    def filter_gnss_and_cones(self):
         """
         After matching image triplets to GNSS timestamps, we must remove the
         non-matched timestamps and corresponding data entries
         """
-        print("Filtering gnss")
-
-        # Pathing
+        print("Filtering GNSS and Cones\n")
         src_gnss_folder_path = os.path.join(self.data_folder_path, "gnss")
         dst_gnss_folder_path = os.path.join(self.data_folder_path,
                                             "gnss_filtered")
