@@ -211,7 +211,7 @@ class RosbagExtractor:
 
             for transform in msg.transforms:
 
-                # Separate different transformations from each other
+                # Seperate different transformations from each other
                 key = transform.child_frame_id + "_to_" + transform.header.frame_id
                 if not transforms_dict.has_key(key):
                     transforms_dict[key] = []
@@ -244,16 +244,6 @@ class RosbagExtractor:
                 # Write a header explaining the data
                 filehandle.writelines(
                     "timestamp, x, y, z, q_x, q_y, q_z, q_w\n")
-
-            # Filter transform_dict using timestamp filter
-            for key in transforms_dict:
-                driving_interval_mask = [
-                    transform[0] > self.timestamp_started_driving
-                    and transform[0] < self.timestamp_stopped_driving
-                    for transform in transforms_dict[key]
-                ]
-                transforms_dict[key] = (np.array(
-                    transforms_dict[key])[driving_interval_mask]).tolist()
 
                 filehandle.writelines(
                     "{:.6f}, {}, {}, {}, {}, {}, {}, {}\n".format(

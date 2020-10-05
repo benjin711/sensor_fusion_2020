@@ -58,81 +58,141 @@ class DataPreprocesser:
         """
         Matches triples of images with the same time stamp. This function
         makes sure that images with the same time stamp also have the
-        same index. Unlike match_images_2, this function discards a time
-        stamp when not all images are available.
+        same index. This function includes a black image whenever an image
+        is missing for a specific time stamp.
         """
-        # Read in the timestamp files
+        """
+                Matches triples of images with the same time stamp. This function 
+                makes sure that images with the same time stamp also have the 
+                same index. This function includes a black image whenever an image
+                is missing for a specific time stamp.
+                """
+
+        # Read in the camera timestamp files
         timestamp_arrays_dict = get_camera_timestamps(self.data_folder_path)
 
-        # For every forward camera image timestamp, find the closest
-        # timestamps from the left and right camera images
+        # Initialization
         indices_dict = {
             "forward_camera": [],
             "right_camera": [],
-            "left_camera": []
+            "left_camera": [],
+            "gnss": []
         }
 
-        for forward_camera_timestamp_idx, forward_camera_timestamp in enumerate(
-                timestamp_arrays_dict["forward_camera"]):
+        # Create large array containing image timestamps, image idx and camera id
+        timestamp_idx_id_array = np.empty((0, 3), dtype=np.float64)
 
-            left_camera_dtimestamps = np.abs(
-                timestamp_arrays_dict["left_camera"] -
-                forward_camera_timestamp)
-            left_camera_min_dtimestamp_idx = np.argmin(left_camera_dtimestamps)
-            left_camera_min_dtimestamp = left_camera_dtimestamps[
-                left_camera_min_dtimestamp_idx]
+        for key, timestamps in timestamp_arrays_dict.items():
+            indices = np.arange(timestamps.shape[0], dtype=np.float64)
+            camera_ids = np.ones(timestamps.shape[0],
+                                 dtype=np.float64) * self.camera_id_dict[key]
+            temp_array = np.vstack((timestamps, indices, camera_ids))
+            timestamp_idx_id_array = np.vstack(
+                (timestamp_idx_id_array, np.transpose(temp_array)))
 
-            right_camera_dtimestamps = np.abs(
-                timestamp_arrays_dict["right_camera"] -
-                forward_camera_timestamp)
-            right_camera_min_dtimestamp_idx = np.argmin(
-                right_camera_dtimestamps)
-            right_camera_min_dtimestamp = right_camera_dtimestamps[
-                right_camera_min_dtimestamp_idx]
+        # Sort timestamp_idx_id_array according to the timestamps
+        sorting_indices = timestamp_idx_id_array[:, 0].argsort()
+        timestamp_idx_id_array = timestamp_idx_id_array[sorting_indices]
 
-            if left_camera_min_dtimestamp < self.MAX_DTIMESTAMP_THRESHOLD and right_camera_min_dtimestamp < self.MAX_DTIMESTAMP_THRESHOLD:
+        idx = 0
+        incomplete_data_counter = 0
+        while idx < timestamp_idx_id_array.shape[0] - 2:
+            # For keeping track to not match images of the same camera
+            camera_ids = list(self.camera_id_dict.values())
 
-                left_camera_timestamp = timestamp_arrays_dict["left_camera"][
-                    left_camera_min_dtimestamp_idx]
-                right_camera_timestamp = timestamp_arrays_dict["right_camera"][
-                    right_camera_min_dtimestamp_idx]
+            # First element
+            ref_timestamp = timestamp_idx_id_array[idx, 0]
+            ref_idx = timestamp_idx_id_array[idx, 1]
+            ref_id = timestamp_idx_id_array[idx, 2]
+            # Second element
+            sec_timestamp = timestamp_idx_id_array[idx + 1, 0]
+            sec_idx = timestamp_idx_id_array[idx + 1, 1]
+            sec_id = timestamp_idx_id_array[idx + 1, 2]
+            # Third element
+            thi_timestamp = timestamp_idx_id_array[idx + 2, 0]
+            thi_idx = timestamp_idx_id_array[idx + 2, 1]
+            thi_id = timestamp_idx_id_array[idx + 2, 2]
 
-                if timestamps_within_interval(
-                        self.MAX_DTIMESTAMP_THRESHOLD,
-                    (forward_camera_timestamp, left_camera_timestamp,
-                     right_camera_timestamp)):
+            # Match to GNSS
+            gnss_dtimestamps = np.abs(self.raw_gnss_timestamps - ref_timestamp)
+            gnss_min_dtimestamp_idx = np.argmin(gnss_dtimestamps)
+            gnss_min_dtimestamp = gnss_dtimestamps[gnss_min_dtimestamp_idx]
 
-                    mean_image_timestamp = np.mean([
-                        forward_camera_timestamp, left_camera_timestamp,
-                        right_camera_timestamp
-                    ])
+            if gnss_min_dtimestamp < self.MAX_DTIMESTAMP_GNSS_THRESHOLD:
+                indices_dict["gnss"].append(gnss_min_dtimestamp_idx)
+                self.reference_timestamps.append(ref_timestamp)
 
-                    gnss_dtimestamps = np.abs(self.raw_gnss_timestamps -
-                                              mean_image_timestamp)
-                    gnss_min_dtimestamp_idx = np.argmin(gnss_dtimestamps)
-                    gnss_min_dtimestamp = gnss_dtimestamps[
-                        gnss_min_dtimestamp_idx]
+            else:
+                # If there is no GT position of the car at the timestamp
+                idx += 1
+                continue
 
-                    if gnss_min_dtimestamp < self.MAX_DTIMESTAMP_GNSS_THRESHOLD:
-                        # Add the indices of the valid image triple and gnss
-                        indices_dict["forward_camera"].append(
-                            forward_camera_timestamp_idx)
-                        indices_dict["right_camera"].append(
-                            right_camera_min_dtimestamp_idx)
-                        indices_dict["left_camera"].append(
-                            left_camera_min_dtimestamp_idx)
+            # Insert first element
+            indices_dict[self.id_camera_dict[ref_id]].append(int(ref_idx))
+            camera_ids.remove(ref_id)
 
-                        self.reference_timestamps.append(mean_image_timestamp)
+            # Insert second element
+            if sec_timestamp - ref_timestamp < self.MAX_DTIMESTAMP_THRESHOLD:
+                if ref_id != sec_id:
+                    # Insert second element
+                    indices_dict[self.id_camera_dict[sec_id]].append(
+                        int(sec_idx))
+                    camera_ids.remove(sec_id)
+                else:
+                    # Two consecutive timestamps of the same camera withing MAX_DTIMESTAMP_THRESHOLD
+                    # We should never reach here..
+                    idx += 2
+                    incomplete_data_counter += 1
+                    continue
+            else:
+                # In this case, we only insert the first element's idx and two fake indices
+                for camera_id in camera_ids:
+                    indices_dict[self.id_camera_dict[camera_id]].append(
+                        int(-1))
+                idx += 1
+                incomplete_data_counter += 1
+                continue
+
+            # Insert third element
+            if thi_timestamp - ref_timestamp < self.MAX_DTIMESTAMP_THRESHOLD:
+                if thi_id == camera_ids[0]:
+                    # Insert third element
+                    indices_dict[self.id_camera_dict[thi_id]].append(
+                        int(thi_idx))
+                    camera_ids.remove(thi_id)
+                else:
+                    # Two consecutive timestamps of the same camera withing MAX_DTIMESTAMP_THRESHOLD
+                    # We should never reach here..
+                    idx += 3
+                    incomplete_data_counter += 1
+                    continue
+            else:
+                # In this case, we only insert the first two elements, the third element's timestamp
+                # is too far off
+                for camera_id in camera_ids:
+                    indices_dict[self.id_camera_dict[camera_id]].append(
+                        int(-1))
+                idx += 2
+                incomplete_data_counter += 1
+                continue
+
+            # Update idx to next section of the indices_dict
+            idx += 3
+
+        print("Incomplete data pairs {}/{}".format(
+            incomplete_data_counter,
+            int(timestamp_idx_id_array[-1, 0] - timestamp_idx_id_array[0, 0]) *
+            10))
 
         self.filter_gnss_and_cones()
         self.filter_images(indices_dict)
 
     def filter_images(self, indices_dict):
         """
-                Creates a folder for each camera and makes sure that
-                images with the same index correspond to the same timestamp.
-                Additionally, this function adds dummy images.
-                """
+        Creates a folder for each camera and makes sure that
+        images with the same index correspond to the same timestamp.
+        Additionally, this function adds dummy images.
+        """
         for key in indices_dict:
             print("Filtering images in folder {}".format(key))
             src_image_folder_path = os.path.join(self.data_folder_path, key)
@@ -143,10 +203,10 @@ class DataPreprocesser:
             if os.path.exists(dst_image_folder_path):
                 print(
                     "The folder {}_filtered exist already indicating that the data has already been matched!"
-                        .format(key))
+                    .format(key))
                 print(
                     "{}_filtered will be removed and the data will be rematched."
-                        .format(key))
+                    .format(key))
                 shutil.rmtree(dst_image_folder_path)
             os.makedirs(dst_image_folder_path)
 
@@ -357,7 +417,10 @@ class DataPreprocesser:
 
         Color column is converted from string to integer: BLUE=0, YELLOW=1.
         """
-        gtmd_data = np.genfromtxt(gtmd_path, delimiter=',', dtype=None)
+        gtmd_data = np.genfromtxt(gtmd_path,
+                                  delimiter=',',
+                                  dtype=None,
+                                  encoding=None)
         gtmd_array = np.zeros((len(gtmd_data), 5))
         for idx, gtmd_entry in enumerate(gtmd_data):
             color = gtmd_entry[0].decode("utf-8")
