@@ -366,18 +366,20 @@ class DataPreprocesser:
     def load_camera_transforms(self):
         """Open the calibration YAMLs and compute the transform
            from the forward camera to the left and right cameras."""
-        calib_left_forward = load_stereo_calib('./resources/left.yaml',
-                                               './resources/left_forward.yaml')
-        calib_right_forward = load_stereo_calib('./resources/right.yaml',
-                                                './resources/right_forward.yaml')
+        calib_left_forward = load_stereo_calib(
+            './resources/left.yaml', './resources/left_forward.yaml')
+        calib_right_forward = load_stereo_calib(
+            './resources/right.yaml', './resources/right_forward.yaml')
         T_left_forward = np.eye(4)
         T_left_forward[:3, :3] = calib_left_forward['rotation_matrix']
-        T_left_forward[:3, 3] = calib_left_forward[
-            'translation_vector'].reshape((3,))
+        T_left_forward[:3,
+                       3] = calib_left_forward['translation_vector'].reshape(
+                           (3, ))
         T_right_forward = np.eye(4)
         T_right_forward[:3, :3] = calib_right_forward['rotation_matrix']
-        T_right_forward[:3, 3] = calib_right_forward[
-            'translation_vector'].reshape((3,))
+        T_right_forward[:3,
+                        3] = calib_right_forward['translation_vector'].reshape(
+                            (3, ))
         self.camera_transforms["left"] = np.linalg.inv(T_left_forward)
         self.camera_transforms["right"] = np.linalg.inv(T_right_forward)
 
@@ -417,7 +419,7 @@ class DataPreprocesser:
                                   encoding=None)
         gtmd_array = np.zeros((len(gtmd_data), 5))
         for idx, gtmd_entry in enumerate(gtmd_data):
-            color = gtmd_entry[0].decode("utf-8")
+            color = gtmd_entry[0]
             if color == 'Blue': gtmd_array[idx, 0] = 0
             elif color == 'Yellow': gtmd_array[idx, 0] = 1
             else: gtmd_array[idx, 0] = 2
@@ -444,8 +446,7 @@ class DataPreprocesser:
         # Only correct for heading
         rotmat = R.from_euler('ZX', [dual_heading + 180, dual_pitch],
                               degrees=True).as_matrix()
-        rotmat_enu2fcam = R.from_euler('x', [90],
-                                       degrees=True).as_matrix()[0]
+        rotmat_enu2fcam = R.from_euler('x', [90], degrees=True).as_matrix()[0]
 
         # Convert cones to ENU frame of vehicle
         cone_colors, cone_gps = cone_array[:, 0], cone_array[:, 1:4]
@@ -496,9 +497,9 @@ class DataPreprocesser:
         os.makedirs(dst_gnss_folder_path, exist_ok=True)
 
         # Filter data by interpolation
-        init_gnss_data = np.fromfile(os.path.join(src_gnss_folder_path,
-                                                  'init_gnss.bin')).reshape(
-            (-1, 7))
+        init_gnss_data = np.fromfile(
+            os.path.join(src_gnss_folder_path, 'init_gnss.bin')).reshape(
+                (-1, 7))
         init_gnss_data = init_gnss_data[0]
         gnss_data = np.fromfile(os.path.join(src_gnss_folder_path,
                                              "gnss.bin")).reshape((-1, 7))
@@ -519,8 +520,9 @@ class DataPreprocesser:
         filtered_gnss_data = []
         for timestamp_idx, ref_timestamp in enumerate(
                 self.reference_timestamps):
-            gnss_data_ref = self.interp_gnss(
-                ref_timestamp, self.raw_gnss_timestamps, gnss_data)
+            gnss_data_ref = self.interp_gnss(ref_timestamp,
+                                             self.raw_gnss_timestamps,
+                                             gnss_data)
             filtered_gnss_data.append(gnss_data_ref.tolist())
 
         filtered_gnss_data = np.array(filtered_gnss_data)
@@ -534,12 +536,11 @@ class DataPreprocesser:
         cone_array = self.parse_gtmd(gtmd_path)
 
         for gnss_data_idx in range(filtered_gnss_data.shape[0]):
-            forward_cone_array = self.filter_cones(cone_array,
-                                                   filtered_gnss_data[
-                                                   gnss_data_idx, :])
+            forward_cone_array = self.filter_cones(
+                cone_array, filtered_gnss_data[gnss_data_idx, :])
             forward_cone_colors, forward_cone_xyz = forward_cone_array[:,
-                                                    0], forward_cone_array[:,
-                                                        1:]
+                                                                       0], forward_cone_array[:,
+                                                                                              1:]
             forward_cone_colors = forward_cone_colors.reshape((-1, 1))
 
             # Transform cones to left and right camera
