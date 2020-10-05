@@ -41,10 +41,7 @@ def main():
 
         data_preprocesser_instance = DataPreprocesser(cfg)
         if cfg.match_data:
-            if not cfg.perfect_data:
-                data_preprocesser_instance.match_data_step_1()
-            else:
-                data_preprocesser_instance.match_images_perfect_data()
+            data_preprocesser_instance.match_data_step_1()
 
             data_preprocesser_instance.match_data_step_2(
                 cfg.motion_compensation)

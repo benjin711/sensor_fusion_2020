@@ -52,13 +52,6 @@ def command_line_parser():
         'Run algorithm to match images and point clouds according to their timestamps to quintests'
     )
 
-    parser.add_argument(
-        '-p',
-        '--perfect_data',
-        dest='perfect_data',
-        action='store_true',
-        help='Discard timestamps when at least one camera failed ')
-
     parser.add_argument('-m',
                         '--motion_compensation',
                         type=str2bool,
