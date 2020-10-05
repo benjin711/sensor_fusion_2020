@@ -281,14 +281,14 @@ class RosbagExtractor:
                 str(msg.header.stamp.secs),
                 str(msg.header.stamp.nsecs).zfill(9)))
 
-            lat = msg.RTK_latitude
+            latitude = msg.RTK_latitude
             longitude = msg.RTK_longitude
             height = msg.RTK_height
             INS_roll = msg.INS_roll
             INS_pitch = msg.INS_pitch
             dual_pitch = msg.dual_pitch
             dual_heading = msg.dual_heading
-            curr_pose = [long, lat, height, INS_pitch, INS_roll, dual_pitch,
+            curr_pose = [longitude, latitude, height, INS_pitch, INS_roll, dual_pitch,
                          dual_heading]
 
             if self.moving_only_flag:
@@ -300,7 +300,6 @@ class RosbagExtractor:
                 elif timestamp > self.timestamp_stopped_driving:
                     continue
 
-            curr_pose = [longitude, lat, height, pitch, roll, heading]
             poses.append(curr_pose)
             timestamps.append(timestamp)
             counter += 1
