@@ -61,12 +61,6 @@ class DataPreprocesser:
         same index. This function includes a black image whenever an image
         is missing for a specific time stamp.
         """
-        """
-                Matches triples of images with the same time stamp. This function 
-                makes sure that images with the same time stamp also have the 
-                same index. This function includes a black image whenever an image
-                is missing for a specific time stamp.
-                """
 
         # Read in the camera timestamp files
         timestamp_arrays_dict = get_camera_timestamps(self.data_folder_path)
