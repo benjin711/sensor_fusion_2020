@@ -64,7 +64,7 @@ def timestamps_within_interval(interval, timestamps):
 
 
 def write_reference_timestamps(dst_image_folder, reference_timestamps):
-    print("Update timestamps.txt")
+    print("\nUpdate timestamps.txt")
     with open(os.path.join(dst_image_folder, 'timestamps.txt'),
               'w') as filehandle:
         filehandle.writelines("{:.6f}\n".format(timestamp)
