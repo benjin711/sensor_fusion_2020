@@ -8,6 +8,7 @@ from scipy.spatial.transform import Slerp
 from scipy.ndimage.filters import uniform_filter1d
 from scipy import interpolate
 import pymap3d
+import open3d as o3d
 
 
 class DataPreprocesser:
@@ -568,3 +569,133 @@ class DataPreprocesser:
         if not self.keep_orig_data_folders:
             shutil.rmtree(src_gnss_folder_path)
             os.rename(dst_gnss_folder_path, src_gnss_folder_path)
+
+    def extract_rotations(self):
+        # Read in all the fw_lidar point cloud files
+        # Format in a way to have pairs of consecutive files
+        # Loop over this array
+        # Read in the two point clouds
+        # Determine the rotation between the two point clouds using ICP
+        # Format in yaw pitch roll and add to array
+        # In the end write array to folder called relative rotations and file called relative_rotations.bin
+
+        naming = "relative_rotations"
+
+        print(
+            "Calculating relative rotations between consecutive point clouds")
+
+        relative_rotations_folder = os.path.join(self.data_folder_path, naming)
+
+        # Create a folder to store the relative rotations in
+        if os.path.exists(relative_rotations_folder):
+            print(
+                "The folder relative_rotations exist already indicating that they have already been calculated!"
+            )
+            return
+            print(
+                "relative_rotations will be removed and the relative rotations will be recalculated."
+            )
+            shutil.rmtree(relative_rotations_folder)
+        os.makedirs(relative_rotations_folder)
+
+        # List containing relative rotations
+        relative_rotations = []
+
+        # Choose to use front wing point clouds by default
+        # and fall back to mrh point clouds if front wing point clouds
+        # are not available
+        fw_lidar_folder = os.path.join(self.data_folder_path,
+                                       "fw_lidar_filtered")
+        mrh_lidar_folder = os.path.join(self.data_folder_path,
+                                        "mrh_lidar_filtered")
+
+        if not os.path.exists(fw_lidar_folder) and not os.path.exists(
+                mrh_lidar_folder):
+            print(
+                "Relative rotations could not be extracted. Could not find following paths:\n{}\n{}"
+                .format(fw_lidar_folder, mrh_lidar_folder))
+            sys.exit()
+        elif os.path.exists(fw_lidar_folder):
+            pc_folder = fw_lidar_folder
+        else:
+            pc_folder = mrh_lidar_folder
+
+        # Get a list of the point cloud files
+        point_cloud_files = os.listdir(pc_folder)
+        point_cloud_files.remove('timestamps.txt')
+        point_cloud_files = [
+            os.path.join(pc_folder, f) for f in point_cloud_files
+        ]
+        point_cloud_files.sort()
+
+        # Make a list of point cloud file pairs
+        point_cloud_file_pairs = np.vstack(
+            (np.array(point_cloud_files),
+             np.roll(np.array(point_cloud_files), shift=-1)))
+        point_cloud_file_pairs = list(
+            np.transpose(point_cloud_file_pairs)[:-1])
+
+        pbar = tqdm(total=len(point_cloud_file_pairs), desc=naming)
+
+        for point_cloud_file_pair in point_cloud_file_pairs:
+            fw_pc_1 = read_point_cloud(point_cloud_file_pair[0])
+            fw_pc_2 = read_point_cloud(point_cloud_file_pair[1])
+
+            trans_init = np.eye(4)
+
+            fw_pcd_1 = o3d.geometry.PointCloud()
+            fw_pcd_1.points = o3d.utility.Vector3dVector(fw_pc_1[:, :3])
+
+            plane_model, inliers_1 = fw_pcd_1.segment_plane(
+                distance_threshold=0.15, ransac_n=3, num_iterations=2000)
+            fw_pcd_1 = fw_pcd_1.select_by_index(inliers_1, invert=True)
+
+            fw_pcd_2 = o3d.geometry.PointCloud()
+            fw_pcd_2.points = o3d.utility.Vector3dVector(fw_pc_2[:, :3])
+
+            plane_model, inliers_2 = fw_pcd_2.segment_plane(
+                distance_threshold=0.15, ransac_n=3, num_iterations=2000)
+            fw_pcd_2 = fw_pcd_2.select_by_index(inliers_2, invert=True)
+
+            threshold = 1
+
+            reg_p2p = o3d.registration.registration_icp(
+                fw_pcd_1, fw_pcd_2, threshold, trans_init,
+                o3d.registration.TransformationEstimationPointToPoint(),
+                o3d.registration.ICPConvergenceCriteria(max_iteration=2000))
+
+            r = R.from_matrix(reg_p2p.transformation[:3, :3])
+
+            evaluation = o3d.registration.evaluate_registration(
+                fw_pcd_1, fw_pcd_2, threshold, reg_p2p.transformation)
+
+            eval_metrics = [
+                evaluation.fitness, evaluation.inlier_rmse,
+                np.asarray(evaluation.correspondence_set).shape[0]
+            ]
+            rotation = list(r.as_euler('zyx', degrees=True))
+            rotation.extend(eval_metrics)
+
+            relative_rotations.append(rotation)
+
+            pbar.update(1)
+
+        pbar.close()
+
+        # Write to file
+        with open(os.path.join(relative_rotations_folder, naming + '.txt'),
+                  'w') as filehandle:
+            # Write a header explaining the data
+            filehandle.writelines(
+                "yaw, pitch, roll, icp_fitness, inlier_rmse, correspondence_set\n"
+            )
+
+            filehandle.writelines(
+                "{:.6f}, {:.6f}, {:.6f}, {}, {}, {}\n".format(
+                    rel_rot[0],
+                    rel_rot[1],
+                    rel_rot[2],
+                    rel_rot[3],
+                    rel_rot[4],
+                    rel_rot[5],
+                ) for rel_rot in relative_rotations)

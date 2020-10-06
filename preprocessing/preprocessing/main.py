@@ -46,6 +46,9 @@ def main():
             data_preprocesser_instance.match_data_step_2(
                 cfg.motion_compensation)
 
+        if cfg.icp_rots:
+            data_preprocesser_instance.extract_rotations()
+
     ##### DEBUG #####
 
     # Dump data_preprocessor

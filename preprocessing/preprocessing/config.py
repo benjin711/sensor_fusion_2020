@@ -56,7 +56,14 @@ def command_line_parser():
                         '--motion_compensation',
                         type=str2bool,
                         default=True,
-                        help='Specify rosbag data folder path')
+                        help='Motion compensate point clouds')
+
+    parser.add_argument(
+        '-i',
+        '--icp_rots',
+        type=str2bool,
+        default=True,
+        help='Calculate relative rotations between consecutive point clouds')
 
     cfg = parser.parse_args()
 
