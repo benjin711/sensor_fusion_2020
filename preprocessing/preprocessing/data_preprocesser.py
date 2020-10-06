@@ -184,6 +184,7 @@ class DataPreprocesser:
         """
         Creates a folder for each camera and makes sure that
         images with the same index correspond to the same timestamp.
+        Images are also undistorted here.
         Additionally, this function adds dummy images.
         """
         for key in indices_dict:
@@ -224,6 +225,9 @@ class DataPreprocesser:
                         str(idx).zfill(8) + ".png")
 
                     shutil.copy(src_image_filepath, dst_image_filepath)
+
+                    undistort_image(self.data_folder_path, dst_image_filepath,
+                                    key)
                 else:
                     # Create a dummy image
                     dummy_image = np.zeros((self.height, self.width, 3),

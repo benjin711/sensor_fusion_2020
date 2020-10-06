@@ -204,3 +204,37 @@ def load_camera_calib(camera_fn):
     calib['image_height'] = camera_data['image_height']
 
     return calib
+
+
+def create_pinhole_camera(file):
+    with open(file) as f:
+        try:
+            data = yaml.load(f, Loader=yaml.CLoader)
+        except AttributeError:
+            data = yaml.load(f, Loader=yaml.Loader)
+
+    intrinsic_matrix = np.array(data['camera_matrix']['data']).reshape(
+        (data['camera_matrix']['rows'], data['camera_matrix']['cols']))
+    distortion = np.array(data['distortion_coefficients']['data']).reshape(
+        (data['distortion_coefficients']['rows'],
+         data['distortion_coefficients']['cols']))
+
+    return intrinsic_matrix, distortion
+
+
+def undistort_image(data_folder_path, image_path, camera):
+    # Get image
+    img = cv2.imread(image_path)
+
+    # Get camera matrix and distortion coefficients
+    calib_folder = os.path.join(data_folder_path, "..", "..",
+                                "static_transformations")
+    K_mtx, distort = create_pinhole_camera(
+        os.path.join(calib_folder,
+                     camera.split('_')[0] + '.yaml'))
+
+    # Undistort image
+    img = cv2.undistort(img, cameraMatrix=K_mtx, distCoeffs=distort)
+
+    # Write back to file
+    cv2.imwrite(image_path, img)
