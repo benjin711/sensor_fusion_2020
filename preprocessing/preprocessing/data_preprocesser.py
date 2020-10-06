@@ -70,7 +70,6 @@ class DataPreprocesser:
             "forward_camera": [],
             "right_camera": [],
             "left_camera": [],
-            "gnss": []
         }
 
         # Create large array containing image timestamps, image idx and camera id
@@ -113,7 +112,6 @@ class DataPreprocesser:
             gnss_min_dtimestamp = gnss_dtimestamps[gnss_min_dtimestamp_idx]
 
             if gnss_min_dtimestamp < self.MAX_DTIMESTAMP_GNSS_THRESHOLD:
-                indices_dict["gnss"].append(gnss_min_dtimestamp_idx)
                 self.reference_timestamps.append(ref_timestamp)
 
             else:
