@@ -8,6 +8,10 @@ import sys
 def main():
     cfg = command_line_parser()
 
+    # DEBUG START
+    cfg.keep_orig_data_folders
+    # DEBUG END
+
     # Match images to triplets and generate the corresponding reference timestamps
     # Then match point clouds, car RTK data and cone data to the triplets to create septuples
 

@@ -650,16 +650,16 @@ class DataPreprocesser:
             fw_pcd_1 = o3d.geometry.PointCloud()
             fw_pcd_1.points = o3d.utility.Vector3dVector(fw_pc_1[:, :3])
 
-            plane_model, inliers_1 = fw_pcd_1.segment_plane(
-                distance_threshold=0.15, ransac_n=3, num_iterations=2000)
-            fw_pcd_1 = fw_pcd_1.select_by_index(inliers_1, invert=True)
+            # plane_model, inliers_1 = fw_pcd_1.segment_plane(
+            #     distance_threshold=0.15, ransac_n=3, num_iterations=2000)
+            # fw_pcd_1 = fw_pcd_1.select_by_index(inliers_1, invert=True)
 
             fw_pcd_2 = o3d.geometry.PointCloud()
             fw_pcd_2.points = o3d.utility.Vector3dVector(fw_pc_2[:, :3])
 
-            plane_model, inliers_2 = fw_pcd_2.segment_plane(
-                distance_threshold=0.15, ransac_n=3, num_iterations=2000)
-            fw_pcd_2 = fw_pcd_2.select_by_index(inliers_2, invert=True)
+            # plane_model, inliers_2 = fw_pcd_2.segment_plane(
+            #     distance_threshold=0.15, ransac_n=3, num_iterations=2000)
+            # fw_pcd_2 = fw_pcd_2.select_by_index(inliers_2, invert=True)
 
             threshold = 1
 
