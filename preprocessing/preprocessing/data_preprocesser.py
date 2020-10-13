@@ -9,6 +9,7 @@ from scipy.ndimage.filters import uniform_filter1d
 from scipy import interpolate
 import pymap3d
 import open3d as o3d
+import itertools
 
 
 class DataPreprocesser:
@@ -579,6 +580,7 @@ class DataPreprocesser:
         # Format in a way to have pairs of consecutive files
         # Loop over this array
         # Read in the two point clouds
+        # Initialize ICP with good initial guess
         # Determine the rotation between the two point clouds using ICP
         # Format in yaw pitch roll and add to array
         # In the end write array to folder called relative rotations and file called relative_rotations.bin
@@ -595,7 +597,6 @@ class DataPreprocesser:
             print(
                 "The folder relative_rotations exist already indicating that they have already been calculated!"
             )
-            return
             print(
                 "relative_rotations will be removed and the relative rotations will be recalculated."
             )
@@ -620,8 +621,10 @@ class DataPreprocesser:
                 .format(fw_lidar_folder, mrh_lidar_folder))
             sys.exit()
         elif os.path.exists(fw_lidar_folder):
+            which_pc = "fw"
             pc_folder = fw_lidar_folder
         else:
+            which_pc = "mrh"
             pc_folder = mrh_lidar_folder
 
         # Get a list of the point cloud files
@@ -641,30 +644,61 @@ class DataPreprocesser:
 
         pbar = tqdm(total=len(point_cloud_file_pairs), desc=naming)
 
-        for point_cloud_file_pair in point_cloud_file_pairs:
-            fw_pc_1 = read_point_cloud(point_cloud_file_pair[0])
-            fw_pc_2 = read_point_cloud(point_cloud_file_pair[1])
+        # Make a list of initial guesses for ICP
+        # Find the reference timestamps that correspond to the point clouds
+        if not self.reference_timestamps:
+            lidar_filepath_dict = {
+                which_pc: os.path.join(pc_folder, "timestamps.txt")
+            }
+            lidar_timestamps_array_dict = read_timestamps(lidar_filepath_dict)
+            self.reference_timestamps = lidar_timestamps_array_dict[which_pc]
 
-            trans_init = np.eye(4)
+        # Calculate initial guesses for the transformations between consecutive
+        # point clouds
+        timestamps_start = self.reference_timestamps
+        timestamps_end = np.roll(self.reference_timestamps, shift=-1)
+        timestamp_pairs = np.transpose(
+            np.vstack((timestamps_start, timestamps_end)))[:-1]
+        initial_guesses = self.egomotion_compensator.get_transformations(
+            timestamp_pairs)
+
+        MAX_CHANNEL = 20
+        MIN_DIST = 2
+
+        for point_cloud_file_pair, initial_guess in zip(
+                point_cloud_file_pairs, initial_guesses):
+            fw_pc_1 = read_point_cloud(point_cloud_file_pair[0])
+
+            channels_fw_pc_1 = fw_pc_1[:, 5]
+            channels_mask_fw_pc_1 = channels_fw_pc_1 < MAX_CHANNEL
+
+            dist_fw_pc_1 = np.linalg.norm(fw_pc_1[:, :3], axis=1)
+            dist_mask_fw_pc_1 = dist_fw_pc_1 > MIN_DIST
+
+            fw_pc_1 = fw_pc_1[np.logical_and(channels_mask_fw_pc_1,
+                                             dist_mask_fw_pc_1)]
 
             fw_pcd_1 = o3d.geometry.PointCloud()
             fw_pcd_1.points = o3d.utility.Vector3dVector(fw_pc_1[:, :3])
 
-            # plane_model, inliers_1 = fw_pcd_1.segment_plane(
-            #     distance_threshold=0.15, ransac_n=3, num_iterations=2000)
-            # fw_pcd_1 = fw_pcd_1.select_by_index(inliers_1, invert=True)
+            fw_pc_2 = read_point_cloud(point_cloud_file_pair[1])
+
+            channels_fw_pc_2 = fw_pc_2[:, 5]
+            channels_mask_fw_pc_2 = channels_fw_pc_2 < MAX_CHANNEL
+
+            dist_fw_pc_2 = np.linalg.norm(fw_pc_2[:, :3], axis=1)
+            dist_mask_fw_pc_2 = dist_fw_pc_2 > MIN_DIST
+
+            fw_pc_2 = fw_pc_2[np.logical_and(channels_mask_fw_pc_2,
+                                             dist_mask_fw_pc_2)]
 
             fw_pcd_2 = o3d.geometry.PointCloud()
             fw_pcd_2.points = o3d.utility.Vector3dVector(fw_pc_2[:, :3])
 
-            # plane_model, inliers_2 = fw_pcd_2.segment_plane(
-            #     distance_threshold=0.15, ransac_n=3, num_iterations=2000)
-            # fw_pcd_2 = fw_pcd_2.select_by_index(inliers_2, invert=True)
-
             threshold = 1
 
             reg_p2p = o3d.registration.registration_icp(
-                fw_pcd_1, fw_pcd_2, threshold, trans_init,
+                fw_pcd_1, fw_pcd_2, threshold, initial_guess,
                 o3d.registration.TransformationEstimationPointToPoint(),
                 o3d.registration.ICPConvergenceCriteria(max_iteration=2000))
 
