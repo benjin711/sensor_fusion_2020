@@ -16,7 +16,7 @@ pipenv install
 ```
 
 Requirement is that the images, point clouds, tf transforms and car GNSS have already been extracted using the rosbag extraction scripts. A file structure like the following is expected:
-
+```
 .
 ├── 2020-07-05_tuggen
 │   ├── data
@@ -29,8 +29,12 @@ Requirement is that the images, point clouds, tf transforms and car GNSS have al
 │   │   ├── autocross_2020-07-05-11-58-07.bag
 │   │   ├── autocross_2020-07-05-12-35-31.bag
 │   │   └── autocross_2020-07-05-13-57-26.bag
-│   └── static_transformations
-│       └── static_transformations.yaml
+│   ├── static_transformations
+│   │   └── static_transformations.yaml
+│   └── sensor_extrinsics
+│       ├── extrinsics_lidar_forward.yaml
+│       ├── extrinsics_lidar_left.yaml
+│       └── extrinsics_lidar_right.yaml
 ├── 2020-07-08_duebendorf
 │   ├── data
 │   │   └── autocross_2020-07-08-09-53-46
@@ -42,7 +46,7 @@ Requirement is that the images, point clouds, tf transforms and car GNSS have al
 │   └── static_transformations
 │       └── static_transformations.yaml
 ...
-
+```
 
 
 To preprocess a single data folder from one rosbag, do:
