@@ -576,14 +576,8 @@ class DataPreprocesser:
             os.rename(dst_gnss_folder_path, src_gnss_folder_path)
 
     def extract_rotations(self):
-        # Read in all the fw_lidar point cloud files
-        # Format in a way to have pairs of consecutive files
-        # Loop over this array
-        # Read in the two point clouds
-        # Initialize ICP with good initial guess
         # Determine the rotation between the two point clouds using ICP
-        # Format in yaw pitch roll and add to array
-        # In the end write array to folder called relative rotations and file called relative_rotations.bin
+        # Write to folder called relative rotations and file called relative_rotations.bin
 
         naming = "relative_rotations"
 
