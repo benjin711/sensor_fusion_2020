@@ -222,8 +222,8 @@ if __name__ == '__main__':
     R = cv2.Rodrigues(R)[0]
     t = t.reshape((3, 1))
     print('Calibration Result:')
-    print(f'rotation matrix: {R}')
-    print(f'translation vector: {t}')
+    print(f'rotation matrix:\n{R}')
+    print(f'translation matrix:\n{t}')
 
     img = cv2.undistort(img, cameraMatrix=K_mtx, distCoeffs=distort)
     projection = draw_points(pc[:, :3], img, R, t, K_mtx)
@@ -238,21 +238,23 @@ if __name__ == '__main__':
     fs_write = cv2.FileStorage(f_name, cv2.FILE_STORAGE_WRITE)
     fs_write.write('R_mtx', R)
     fs_write.write('t_mtx', t)
+    fs_write.release()
 
     if cfg.check_projection:
         fs_read = cv2.FileStorage(os.path.join(
-                    pwd, 'extrinsics',
-                    f'extrinsics_{cfg.lidar}_{cfg.camera}.npz'), cv2.FILE_STORAGE_READ)
+                    extrinsics_path,
+                    f'extrinsics_lidar_{cfg.camera}.yaml'),
+                    cv2.FILE_STORAGE_READ)
         R = fs_read.getNode('R_mtx').mat() 
         t = fs_read.getNode('t_mtx').mat() 
 
-        print(f'rotation vector: {R.squeeze()}')
-        print(f'translation vector: {t.squeeze()}')
+        print(f'rotation matrix:\n{R}')
+        print(f'translation matrix:\n{t}')
 
         out = cv2.VideoWriter(f'{cfg.lidar}_{cfg.camera}.mp4',
-                              cv2.VideoWriter_fourcc(*'MP4V'), 10.0,
+                              cv2.VideoWriter_fourcc(*'mp4v'), 10.0,
                               (img.shape[1], img.shape[0]))
-        for i in range(len(imgfile)):
+        for i in range(min(len(imgfile), 100)):
             img = cv2.imread(imgfile[i])
             pc = (np.fromfile(pcfiles[i], dtype=np.float64).reshape(-1,
                                                                     6))[:, :4]
