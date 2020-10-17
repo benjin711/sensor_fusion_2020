@@ -8,6 +8,10 @@ import sys
 def main():
     cfg = command_line_parser()
 
+    # DEBUG START
+    cfg.keep_orig_data_folders
+    # DEBUG END
+
     # Match images to triplets and generate the corresponding reference timestamps
     # Then match point clouds, car RTK data and cone data to the triplets to create septuples
 
@@ -41,13 +45,13 @@ def main():
 
         data_preprocesser_instance = DataPreprocesser(cfg)
         if cfg.match_data:
-            if not cfg.perfect_data:
-                data_preprocesser_instance.match_data_step_1()
-            else:
-                data_preprocesser_instance.match_images_perfect_data()
+            data_preprocesser_instance.match_data_step_1()
 
             data_preprocesser_instance.match_data_step_2(
                 cfg.motion_compensation)
+
+        if cfg.icp_rots:
+            data_preprocesser_instance.extract_rotations()
 
     ##### DEBUG #####
 

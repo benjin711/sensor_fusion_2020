@@ -8,6 +8,8 @@ from scipy.spatial.transform import Slerp
 from scipy.ndimage.filters import uniform_filter1d
 from scipy import interpolate
 import pymap3d
+import open3d as o3d
+import itertools
 
 
 class DataPreprocesser:
@@ -183,6 +185,7 @@ class DataPreprocesser:
         """
         Creates a folder for each camera and makes sure that
         images with the same index correspond to the same timestamp.
+        Images are also undistorted here.
         Additionally, this function adds dummy images.
         """
         for key in indices_dict:
@@ -223,6 +226,9 @@ class DataPreprocesser:
                         str(idx).zfill(8) + ".png")
 
                     shutil.copy(src_image_filepath, dst_image_filepath)
+
+                    undistort_image(self.data_folder_path, dst_image_filepath,
+                                    key)
                 else:
                     # Create a dummy image
                     dummy_image = np.zeros((self.height, self.width, 3),
@@ -568,3 +574,160 @@ class DataPreprocesser:
         if not self.keep_orig_data_folders:
             shutil.rmtree(src_gnss_folder_path)
             os.rename(dst_gnss_folder_path, src_gnss_folder_path)
+
+    def extract_rotations(self):
+        # Determine the rotation between the two point clouds using ICP
+        # Write to folder called relative rotations and file called relative_rotations.bin
+
+        naming = "relative_rotations"
+
+        print(
+            "Calculating relative rotations between consecutive point clouds")
+
+        relative_rotations_folder = os.path.join(self.data_folder_path, naming)
+
+        # Create a folder to store the relative rotations in
+        if os.path.exists(relative_rotations_folder):
+            print(
+                "The folder relative_rotations exist already indicating that they have already been calculated!"
+            )
+            print(
+                "relative_rotations will be removed and the relative rotations will be recalculated."
+            )
+            shutil.rmtree(relative_rotations_folder)
+        os.makedirs(relative_rotations_folder)
+
+        # List containing relative rotations
+        relative_rotations = []
+
+        # Choose to use front wing point clouds by default
+        # and fall back to mrh point clouds if front wing point clouds
+        # are not available
+        fw_lidar_folder = os.path.join(self.data_folder_path,
+                                       "fw_lidar_filtered")
+        mrh_lidar_folder = os.path.join(self.data_folder_path,
+                                        "mrh_lidar_filtered")
+
+        if not os.path.exists(fw_lidar_folder) and not os.path.exists(
+                mrh_lidar_folder):
+            print(
+                "Relative rotations could not be extracted. Could not find following paths:\n{}\n{}"
+                .format(fw_lidar_folder, mrh_lidar_folder))
+            sys.exit()
+        elif os.path.exists(fw_lidar_folder):
+            which_pc = "fw"
+            pc_folder = fw_lidar_folder
+        else:
+            which_pc = "mrh"
+            pc_folder = mrh_lidar_folder
+
+        # Get a list of the point cloud files
+        point_cloud_files = os.listdir(pc_folder)
+        point_cloud_files.remove('timestamps.txt')
+        point_cloud_files = [
+            os.path.join(pc_folder, f) for f in point_cloud_files
+        ]
+        point_cloud_files.sort()
+
+        # Make a list of point cloud file pairs
+        point_cloud_file_pairs = np.vstack(
+            (np.array(point_cloud_files),
+             np.roll(np.array(point_cloud_files), shift=-1)))
+        point_cloud_file_pairs = list(
+            np.transpose(point_cloud_file_pairs)[:-1])
+
+        pbar = tqdm(total=len(point_cloud_file_pairs), desc=naming)
+
+        # Make a list of initial guesses for ICP
+        # Find the reference timestamps that correspond to the point clouds
+        if not self.reference_timestamps:
+            lidar_filepath_dict = {
+                which_pc: os.path.join(pc_folder, "timestamps.txt")
+            }
+            lidar_timestamps_array_dict = read_timestamps(lidar_filepath_dict)
+            self.reference_timestamps = lidar_timestamps_array_dict[which_pc]
+
+        # Calculate initial guesses for the transformations between consecutive
+        # point clouds
+        timestamps_start = self.reference_timestamps
+        timestamps_end = np.roll(self.reference_timestamps, shift=-1)
+        timestamp_pairs = np.transpose(
+            np.vstack((timestamps_start, timestamps_end)))[:-1]
+        initial_guesses = self.egomotion_compensator.get_transformations(
+            timestamp_pairs)
+
+        MAX_CHANNEL = 20
+        MIN_DIST = 2
+
+        for point_cloud_file_pair, initial_guess in zip(
+                point_cloud_file_pairs, initial_guesses):
+            fw_pc_1 = read_point_cloud(point_cloud_file_pair[0])
+
+            channels_fw_pc_1 = fw_pc_1[:, 5]
+            channels_mask_fw_pc_1 = channels_fw_pc_1 < MAX_CHANNEL
+
+            dist_fw_pc_1 = np.linalg.norm(fw_pc_1[:, :3], axis=1)
+            dist_mask_fw_pc_1 = dist_fw_pc_1 > MIN_DIST
+
+            fw_pc_1 = fw_pc_1[np.logical_and(channels_mask_fw_pc_1,
+                                             dist_mask_fw_pc_1)]
+
+            fw_pcd_1 = o3d.geometry.PointCloud()
+            fw_pcd_1.points = o3d.utility.Vector3dVector(fw_pc_1[:, :3])
+
+            fw_pc_2 = read_point_cloud(point_cloud_file_pair[1])
+
+            channels_fw_pc_2 = fw_pc_2[:, 5]
+            channels_mask_fw_pc_2 = channels_fw_pc_2 < MAX_CHANNEL
+
+            dist_fw_pc_2 = np.linalg.norm(fw_pc_2[:, :3], axis=1)
+            dist_mask_fw_pc_2 = dist_fw_pc_2 > MIN_DIST
+
+            fw_pc_2 = fw_pc_2[np.logical_and(channels_mask_fw_pc_2,
+                                             dist_mask_fw_pc_2)]
+
+            fw_pcd_2 = o3d.geometry.PointCloud()
+            fw_pcd_2.points = o3d.utility.Vector3dVector(fw_pc_2[:, :3])
+
+            threshold = 1
+
+            reg_p2p = o3d.registration.registration_icp(
+                fw_pcd_1, fw_pcd_2, threshold, initial_guess,
+                o3d.registration.TransformationEstimationPointToPoint(),
+                o3d.registration.ICPConvergenceCriteria(max_iteration=2000))
+
+            r = R.from_matrix(reg_p2p.transformation[:3, :3])
+
+            evaluation = o3d.registration.evaluate_registration(
+                fw_pcd_1, fw_pcd_2, threshold, reg_p2p.transformation)
+
+            eval_metrics = [
+                evaluation.fitness, evaluation.inlier_rmse,
+                np.asarray(evaluation.correspondence_set).shape[0]
+            ]
+            rotation = list(r.as_euler('zyx', degrees=True))
+            rotation.extend(eval_metrics)
+
+            relative_rotations.append(rotation)
+
+            pbar.update(1)
+
+        pbar.close()
+
+        # Write to file
+        with open(os.path.join(relative_rotations_folder, naming + '.txt'),
+                  'w') as filehandle:
+            # Write a header explaining the data
+            filehandle.writelines(
+                "yaw, pitch, roll, icp_fitness, inlier_rmse, correspondence_set\n"
+            )
+
+            filehandle.writelines(
+                "{:.6f}, {:.6f}, {:.6f}, {}, {}, {}\n".format(
+                    rel_rot[0],
+                    rel_rot[1],
+                    rel_rot[2],
+                    rel_rot[3],
+                    rel_rot[4],
+                    rel_rot[5],
+                ) for rel_rot in relative_rotations)

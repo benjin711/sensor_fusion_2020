@@ -195,7 +195,10 @@ def load_camera_calib(camera_fn):
 
     calib = {}
     with open(camera_fn) as camera_f:
-        camera_data = yaml.load(camera_f)
+        try:
+            camera_data = yaml.load(camera_f, Loader=yaml.CLoader)
+        except AttributeError:
+            camera_data = yaml.load(camera_f, Loader=yaml.Loader)
 
     calib['camera_matrix'] = load_rosparam_mat(camera_data, 'camera_matrix')
     calib['distortion_coefficients'] = load_rosparam_mat(
@@ -204,3 +207,23 @@ def load_camera_calib(camera_fn):
     calib['image_height'] = camera_data['image_height']
 
     return calib
+
+
+def undistort_image(data_folder_path, image_path, camera):
+    # Get image
+    img = cv2.imread(image_path)
+
+    # Get camera matrix and distortion coefficients
+    calib_folder = os.path.join(data_folder_path, "..", "..",
+                                "static_transformations")
+    calib = load_camera_calib(
+        os.path.join(calib_folder,
+                     camera.split('_')[0] + '.yaml'))
+
+    # Undistort image
+    img = cv2.undistort(img,
+                        cameraMatrix=calib['camera_matrix'],
+                        distCoeffs=calib['distortion_coefficients'])
+
+    # Write back to file
+    cv2.imwrite(image_path, img)
