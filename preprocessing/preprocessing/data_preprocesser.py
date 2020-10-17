@@ -58,10 +58,10 @@ class DataPreprocesser:
 
     def match_data_step_1(self):
         """
-        Matches triples of images with the same time stamp. This function
-        makes sure that images with the same time stamp also have the
-        same index. This function includes a black image whenever an image
-        is missing for a specific time stamp.
+        - Matches triples of images with the same time stamp
+        - Images with the same timestamp will have the same index
+        - A black image is included whenever an image is missing for a specific time stamp
+        - Car position and cone positions are also matched to every time stamp
         """
 
         # Read in the camera timestamp files
@@ -488,7 +488,7 @@ class DataPreprocesser:
         print("Filtering GNSS and Cones\n")
         src_gnss_folder_path = os.path.join(self.data_folder_path, "gnss")
         dst_gnss_folder_path = os.path.join(self.data_folder_path,
-                                            "gnss_filtered")
+                                            "car_position_filtered")
         dst_forward_cones_folder_path = os.path.join(self.data_folder_path,
                                                      "forward_cones_filtered")
         dst_left_cones_folder_path = os.path.join(self.data_folder_path,
@@ -731,3 +731,8 @@ class DataPreprocesser:
                     rel_rot[4],
                     rel_rot[5],
                 ) for rel_rot in relative_rotations)
+
+    def generate_rgbd(self):
+        # Data folder path of one rosbag
+        calibration_folder = os.path.join(self.data_folder_path, "..", "..",
+                                          "static_transformations")

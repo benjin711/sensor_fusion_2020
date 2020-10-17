@@ -41,15 +41,17 @@ def command_line_parser():
         '-k',
         '--keep_orig_data_folders',
         dest='keep_orig_data_folders',
-        action='store_true',
-        help='Keep the original data folders (not grouped by timestamp)')
+        type=str2bool,
+        default=True,
+        help=
+        'Keep the original data folders (which are not grouped by timestamp)')
 
     parser.add_argument(
         '--match_data',
         dest='match_data',
         action='store_true',
         help=
-        'Run algorithm to match images and point clouds according to their timestamps to quintests'
+        'Run algorithm to match images, point clouds, cone positions and car positions according to their timestamps'
     )
 
     parser.add_argument('-m',
@@ -57,6 +59,11 @@ def command_line_parser():
                         type=str2bool,
                         default=True,
                         help='Motion compensate point clouds')
+
+    parser.add_argument('--generate_rgbd',
+                        dest='generate_rgbd',
+                        action='store_true',
+                        help='Generate RGBD images')
 
     parser.add_argument(
         '-i',
