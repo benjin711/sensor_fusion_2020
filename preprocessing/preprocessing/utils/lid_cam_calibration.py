@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 from matplotlib import cm as cm
 from mpl_toolkits.mplot3d import Axes3D
 import argparse
+from utils import load_camera_calib
+from datetime import datetime
 
 
 def str2bool(v):
@@ -26,16 +28,13 @@ def commandline_parser():
     parser = argparse.ArgumentParser(
         add_help=True, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument('--data_root',
-                        type=str,
-                        default='',
-                        required=True,
-                        help='Path to top level directory containing data, gtmd, rosbag, etc')
-    parser.add_argument('--calib_dir',
-                        type=str,
-                        default='',
-                        required=True,
-                        help='Path to directory containing camera infos')
+    parser.add_argument(
+        '--test_day_folder',
+        type=str,
+        default='',
+        required=True,
+        help=
+        'Path to top level test day folder containing data, gtmd, rosbag, etc')
     parser.add_argument('--lidar',
                         type=str,
                         default='fw',
@@ -46,6 +45,10 @@ def commandline_parser():
                         default='',
                         required=True,
                         help='Camera to Calibrate: [left, right, forward]')
+    parser.add_argument('--undistort',
+                        dest='undistort',
+                        action='store_true',
+                        help='Use this flag to undistort images')
     parser.add_argument('--check_projection',
                         type=str2bool,
                         default=False,
@@ -72,24 +75,8 @@ def create_pcd(xyz, scores=None, vmin=None, vmax=None, cmap=cm.tab20c):
     return pcd
 
 
-def create_pinhole_camera(file):
-    with open(file) as f:
-        try:
-            data = yaml.load(f, Loader=yaml.CLoader)
-        except AttributeError:
-            data = yaml.load(f, Loader=yaml.Loader)
-
-    intrinsic_matrix = np.array(data['camera_matrix']['data']).reshape(
-        (data['camera_matrix']['rows'], data['camera_matrix']['cols']))
-    distortion = np.array(data['distortion_coefficients']['data']).reshape(
-        (data['distortion_coefficients']['rows'],
-         data['distortion_coefficients']['cols']))
-
-    return intrinsic_matrix, distortion
-
-
 def select_img_points(img):
-    ref_pt = np.zeros((2,))
+    ref_pt = np.zeros((2, ))
     img_points = []
 
     def correspondence_cb(event, x, y, flags, param):
@@ -118,7 +105,7 @@ def select_img_points(img):
     return np.array(img_points)
 
 
-def pick_points(pcd:o3d.geometry.PointCloud):
+def pick_points(pcd: o3d.geometry.PointCloud):
     print("")
     print(
         "1) Please pick at least three correspondences using [shift + left click]"
@@ -135,7 +122,7 @@ def pick_points(pcd:o3d.geometry.PointCloud):
     return vis.get_picked_points()
 
 
-def to_pixel(pcd:np.array, R:np.array, T:np.array, rect:np.array):
+def to_pixel(pcd: np.array, R: np.array, T: np.array, rect: np.array):
     '''
     Generate pixel coordinate for all points
     '''
@@ -194,44 +181,58 @@ if __name__ == '__main__':
     pwd = os.path.abspath(".")
     cfg = commandline_parser()
     pcfiles = sorted(
-        glob(os.path.join(cfg.data_root,
-                          'data', '*',
-                          cfg.lidar + '_lidar_filtered',
-                          '*.bin')))
-    imgfile = sorted(
         glob(
-            os.path.join(cfg.data_root,
-                         'data', '*',
-                         cfg.camera + '_camera_filtered',
-                         '*.png')))
+            os.path.join(cfg.test_day_folder, 'data', '*',
+                         cfg.lidar + '_lidar_filtered', '*.bin')))
+    img_paths = sorted(
+        glob(
+            os.path.join(cfg.test_day_folder, 'data', '*',
+                         cfg.camera + '_camera_filtered', '*.png')))
 
-    for i in range(len(imgfile)):
-        img = cv2.imread(imgfile[i])
+    # Grabs first valid (non black) image, corresponding pc and camera intrincs
+    for i in range(len(img_paths)):
+        img = cv2.imread(img_paths[i])
         if np.sum(img) > 0:
             break
+
     pc = (np.fromfile(pcfiles[i], dtype=np.float64).reshape(-1, 6))[:, :4]
 
-    K_mtx, distort = create_pinhole_camera(
-        os.path.join(cfg.calib_dir, cfg.camera + '.yaml'))
+    camera_calib = load_camera_calib(
+        os.path.join(
+            os.path.join(cfg.test_day_folder, "static_transformations",
+                         cfg.camera + '.yaml')))
+    K_mtx = camera_calib['camera_matrix']
+    dist_coeff = camera_calib["distortion_coefficients"]
 
+    K_mtx = np.array([[1723.06, 0, 1301.8], [0, 1606.73, 128.883], [0, 0, 1]])
+    dist_coeff = np.array([-0.0121418, 0.0040215, -0.00237977, 0.000151017])
+    if cfg.undistort:
+        img = cv2.undistort(img, cameraMatrix=K_mtx, distCoeffs=dist_coeff)
+
+    # Select correpondences
     img_points = select_img_points(img)
     pcd = create_pcd(pc[:, :3], pc[:, 3])
     pc_index = pick_points(pcd)
 
-    _, R, t = cv2.solvePnP(pc[pc_index, :3], img_points, K_mtx, distort)
+    # Solve the PnP problem
+    _, R, t = cv2.solvePnP(pc[pc_index, :3], img_points, K_mtx, np.array([]))
+
     R = cv2.Rodrigues(R)[0]
     t = t.reshape((3, 1))
     print('Calibration Result:')
     print(f'rotation matrix:\n{R}')
     print(f'translation matrix:\n{t}')
 
-    img = cv2.undistort(img, cameraMatrix=K_mtx, distCoeffs=distort)
     projection = draw_points(pc[:, :3], img, R, t, K_mtx)
     cv2.imshow('Projection', projection)
+    cv2.imwrite(
+        str(cfg.lidar) + "_" + str(cfg.camera) + "_" +
+        str(datetime.now().timestamp()) + ".png", projection)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-    extrinsics_path = os.path.join(cfg.data_root, 'extrinsics')
+    extrinsics_path = os.path.join(cfg.test_day_folder,
+                                   'static_transformations')
     os.makedirs(extrinsics_path, exist_ok=True)
     f_name = os.path.join(extrinsics_path,
                           f'extrinsics_lidar_{cfg.camera}.yaml')
@@ -241,12 +242,12 @@ if __name__ == '__main__':
     fs_write.release()
 
     if cfg.check_projection:
-        fs_read = cv2.FileStorage(os.path.join(
-                    extrinsics_path,
-                    f'extrinsics_lidar_{cfg.camera}.yaml'),
-                    cv2.FILE_STORAGE_READ)
-        R = fs_read.getNode('R_mtx').mat() 
-        t = fs_read.getNode('t_mtx').mat() 
+        fs_read = cv2.FileStorage(
+            os.path.join(extrinsics_path,
+                         f'extrinsics_lidar_{cfg.camera}.yaml'),
+            cv2.FILE_STORAGE_READ)
+        R = fs_read.getNode('R_mtx').mat()
+        t = fs_read.getNode('t_mtx').mat()
 
         print(f'rotation matrix:\n{R}')
         print(f'translation matrix:\n{t}')
@@ -254,11 +255,11 @@ if __name__ == '__main__':
         out = cv2.VideoWriter(f'{cfg.lidar}_{cfg.camera}.mp4',
                               cv2.VideoWriter_fourcc(*'mp4v'), 10.0,
                               (img.shape[1], img.shape[0]))
-        for i in range(min(len(imgfile), 100)):
-            img = cv2.imread(imgfile[i])
+        for i in range(min(len(img_paths), 200)):
+            img = cv2.imread(img_paths[i])
             pc = (np.fromfile(pcfiles[i], dtype=np.float64).reshape(-1,
                                                                     6))[:, :4]
-            img = cv2.undistort(img, cameraMatrix=K_mtx, distCoeffs=distort)
+            img = cv2.undistort(img, cameraMatrix=K_mtx, distCoeffs=dist_coeff)
             projection = draw_points(pc[:, :3], img, R, t, K_mtx)
             out.write(projection)
         out.release()

@@ -205,6 +205,8 @@ def load_camera_calib(camera_fn):
         camera_data, 'distortion_coefficients')
     calib['image_width'] = camera_data['image_width']
     calib['image_height'] = camera_data['image_height']
+    calib['projection_matrix'] = load_rosparam_mat(camera_data,
+                                                   'projection_matrix')
 
     return calib
 
