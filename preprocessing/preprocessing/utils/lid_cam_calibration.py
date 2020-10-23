@@ -193,7 +193,14 @@ if __name__ == '__main__':
     for i in range(len(img_paths)):
         img = cv2.imread(img_paths[i])
         if np.sum(img) > 0:
-            break
+            cv2.namedWindow("Choose Image")
+
+            cv2.imshow("Choose Image", img)
+            key = cv2.waitKey(0)
+            if key == ord('y'):
+                break
+            elif key == ord('n'):
+                continue
 
     pc = (np.fromfile(pcfiles[i], dtype=np.float64).reshape(-1, 6))[:, :4]
 
@@ -204,8 +211,18 @@ if __name__ == '__main__':
     K_mtx = camera_calib['camera_matrix']
     dist_coeff = camera_calib["distortion_coefficients"]
 
-    K_mtx = np.array([[1723.06, 0, 1301.8], [0, 1606.73, 128.883], [0, 0, 1]])
-    dist_coeff = np.array([-0.0121418, 0.0040215, -0.00237977, 0.000151017])
+    # Forward camera intrinsics
+    # K_mtx = np.array([[1723.06, 0, 1301.8], [0, 1606.73, 128.883], [0, 0, 1]])
+    # dist_coeff = np.array([-0.0121418, 0.0040215, -0.00237977, 0.000151017])
+
+    # Left camera intrinsics
+    # K_mtx = np.array([[1711.97, 0, 1324.42], [0, 1580.73, 114.478], [0, 0, 1]])
+    # dist_coeff = np.array([0.0328083, -0.0216367, 0.00309066, 0.00124671])
+
+    # Right camera intrinsics
+    # K_mtx = np.array([[1724.2, 0, 1258.96], [0, 1580.73, 98.7964], [0, 0, 1]])
+    # dist_coeff = np.array([0.0287106, 0.0149668, -0.0129965, -0.0145366])
+
     if cfg.undistort:
         img = cv2.undistort(img, cameraMatrix=K_mtx, distCoeffs=dist_coeff)
 
