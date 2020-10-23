@@ -11,6 +11,7 @@ from mpl_toolkits.mplot3d import Axes3D
 import argparse
 from utils import load_camera_calib
 from datetime import datetime
+import sys
 
 
 def str2bool(v):
@@ -188,6 +189,10 @@ if __name__ == '__main__':
         glob(
             os.path.join(cfg.test_day_folder, 'data', '*',
                          cfg.camera + '_camera_filtered', '*.png')))
+
+    if pcfiles == [] or img_paths == []:
+        print("Coudld not read any pcs or imgs")
+        sys.exit()
 
     # Grabs first valid (non black) image, corresponding pc and camera intrincs
     for i in range(len(img_paths)):
