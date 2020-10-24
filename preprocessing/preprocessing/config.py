@@ -62,7 +62,7 @@ def command_line_parser():
         '-i',
         '--icp_rots',
         type=str2bool,
-        default=True,
+        default=False,
         help='Calculate relative rotations between consecutive point clouds')
 
     cfg = parser.parse_args()
