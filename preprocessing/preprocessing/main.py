@@ -47,7 +47,7 @@ def main():
         if cfg.icp_rots:
             data_preprocesser_instance.extract_rotations()
 
-        if cfg.generate_rbgd:
+        if cfg.generate_rgbd:
             data_preprocesser_instance.generate_rgbd()
 
 
