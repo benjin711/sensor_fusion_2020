@@ -217,19 +217,6 @@ if __name__ == '__main__':
     K_mtx = camera_calib['camera_matrix']
     dist_coeff = camera_calib["distortion_coefficients"]
 
-    #### OLD INTRINSICS THAT DONT SEEM TO WORK ANYMORE ####
-    # Forward camera intrinsics
-    # K_mtx = np.array([[1723.06, 0, 1301.8], [0, 1606.73, 128.883], [0, 0, 1]])
-    # dist_coeff = np.array([-0.0121418, 0.0040215, -0.00237977, 0.000151017])
-
-    # Left camera intrinsics
-    # K_mtx = np.array([[1711.97, 0, 1324.42], [0, 1580.73, 114.478], [0, 0, 1]])
-    # dist_coeff = np.array([0.0328083, -0.0216367, 0.00309066, 0.00124671])
-
-    # Right camera intrinsics
-    # K_mtx = np.array([[1724.2, 0, 1258.96], [0, 1580.73, 98.7964], [0, 0, 1]])
-    # dist_coeff = np.array([0.0287106, 0.0149668, -0.0129965, -0.0145366])
-
     #### NEW INTRINSICS ####
     # 1 OPENCV 2592 640 1720.89 1733.83 1305.88 123.925 -0.165483 0.0966005 0.00094785 0.00101802
     # 2 OPENCV 2592 640 1709.13 1724.14 1305.61 135.504 -0.163319 0.0934299 -0.000634316 -0.000454461

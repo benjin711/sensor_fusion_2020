@@ -227,8 +227,8 @@ class DataPreprocesser:
 
                     shutil.copy(src_image_filepath, dst_image_filepath)
 
-                    # undistort_image(self.data_folder_path, dst_image_filepath,
-                    #                 key)
+                    undistort_image(self.data_folder_path, dst_image_filepath,
+                                    key)
                 else:
                     # Create a dummy image
                     dummy_image = np.zeros((self.height, self.width, 3),
