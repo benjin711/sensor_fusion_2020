@@ -153,9 +153,15 @@ class LoadImages:  # for inference
             # Read image
             self.count += 1
             img0 = cv2.imread(path)  # BGR
+            bm0 = np.fromfile(path.replace('img', 'dm').replace(
+                              os.path.splitext(path)[-1], '.bin'),
+                              dtype=np.float64).reshape(img0.shape[0],
+                                                        img0.shape[1],
+                                                        2)
             assert img0 is not None, 'Image Not Found ' + path
             print('image %g/%g %s: ' % (self.count, self.nf, path), end='')
 
+        img0 = np.concatenate((img0, bm0), axis=-1)
         # Padded resize
         img = letterbox(img0, new_shape=self.img_size)[0]
 
@@ -398,8 +404,6 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         else:
             cache = self.cache_labels(cache_path)  # cache
 
-        print(cache.keys())
-        # exit()
         # Get labels
         labels, shapes = zip(*[cache[x] for x in self.img_files])
         self.shapes = np.array(shapes, dtype=np.float64)
@@ -467,6 +471,12 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                 if extract_bounding_boxes:
                     p = Path(self.img_files[i])
                     img = cv2.imread(str(p))
+                    bm = np.fromfile(path.replace('img', 'dm').replace(
+                        os.path.splitext(str(p))[-1], '.bin'),
+                        dtype=np.float64).reshape(img.shape[0],
+                                                  img.shape[1],
+                                                  2)
+                    img = np.concatenate((img, bm), axis=-1)
                     h, w = img.shape[:2]
                     for j, x in enumerate(l):
                         f = '%s%sclassifier%s%g_%g_%s' % (
@@ -606,7 +616,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                                             shear=hyp['shear'])
 
             # Augment colorspace
-            augment_hsv(img,
+            augment_hsv(img[:, :, :3].astype(np.uint8),
                         hgain=hyp['hsv_h'],
                         sgain=hyp['hsv_s'],
                         vgain=hyp['hsv_v'])
@@ -663,6 +673,12 @@ def load_image(self, index):
     if img is None:  # not cached
         path = self.img_files[index]
         img = cv2.imread(path)  # BGR
+        bm = np.fromfile(path.replace('img', 'dm').replace(
+            os.path.splitext(path)[-1], '.bin'),
+            dtype=np.float64).reshape(img.shape[0],
+                                      img.shape[1],
+                                      2)
+        img = np.concatenate((img, bm), axis=-1)
         assert img is not None, 'Image Not Found ' + path
         h0, w0 = img.shape[:2]  # orig hw
         r = self.img_size / max(h0, w0)  # resize image to img_size
