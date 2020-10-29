@@ -8,5 +8,8 @@ This repository organizes the code to develop the early sensor fusion pipeline f
 The goal of the project is to develop a robust and accurate cone detection algorithm by fusing raw perception data provided by the perception sensor modalities of *pilatus*, a Hesai 20B LiDAR on the main roll hoop (MRH), a Hesai 64 on the front wing (FW) and three Basler acA2500-gc20 cameras arranged arount the MRH. The motion compensated point clouds and images fused into a cylindrical coordinate system and are then jointly fed into a Yolo-like network architecture which infers bounding boxes around the cones and the distance of the cones. The bounding box and distance is then used to infer the cone positions relative to the car. 
 
 ## Model
-The model is based on [ultralytics/yolov5](https://github.com/ultralytics/yolov5),
-forking on 2020/10/17.
+The model implementation is based on 
+[YOLOv4](https://github.com/WongKinYiu/PyTorch_YOLOv4), 
+described in [this paper](https://arxiv.org/abs/2004.10934).
+
+Forked on 2020/10/28.

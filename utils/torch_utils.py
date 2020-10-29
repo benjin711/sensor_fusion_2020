@@ -1,19 +1,16 @@
-import logging
+import math
 import os
 import time
 from copy import deepcopy
 
-import math
 import torch
 import torch.backends.cudnn as cudnn
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision
-
-logger = logging.getLogger(__name__)
+import torchvision.models as models
 
 
-def init_torch_seeds(seed=0):
+def init_seeds(seed=0):
     torch.manual_seed(seed)
 
     # Speed-reproducibility tradeoff https://pytorch.org/docs/stable/notes/randomness.html
@@ -25,7 +22,7 @@ def init_torch_seeds(seed=0):
         cudnn.benchmark = True
 
 
-def select_device(device='', batch_size=None):
+def select_device(device='', apex=False, batch_size=None):
     # device = 'cpu' or '0' or '0,1,2,3'
     cpu_request = device.lower() == 'cpu'
     if device and not cpu_request:  # if device requested other than 'cpu'
@@ -39,16 +36,16 @@ def select_device(device='', batch_size=None):
         if ng > 1 and batch_size:  # check that batch_size is compatible with device_count
             assert batch_size % ng == 0, 'batch-size %g not multiple of GPU count %g' % (batch_size, ng)
         x = [torch.cuda.get_device_properties(i) for i in range(ng)]
-        s = 'Using CUDA '
+        s = 'Using CUDA ' + ('Apex ' if apex else '')  # apex for mixed precision https://github.com/NVIDIA/apex
         for i in range(0, ng):
             if i == 1:
                 s = ' ' * len(s)
-            logger.info("%sdevice%g _CudaDeviceProperties(name='%s', total_memory=%dMB)" %
-                        (s, i, x[i].name, x[i].total_memory / c))
+            print("%sdevice%g _CudaDeviceProperties(name='%s', total_memory=%dMB)" %
+                  (s, i, x[i].name, x[i].total_memory / c))
     else:
-        logger.info('Using CPU')
+        print('Using CPU')
 
-    logger.info('')  # skip a line
+    print('')  # skip a line
     return torch.device('cuda:0' if cuda else 'cpu')
 
 
@@ -58,12 +55,8 @@ def time_synchronized():
 
 
 def is_parallel(model):
+    # is model is parallel with DP or DDP
     return type(model) in (nn.parallel.DataParallel, nn.parallel.DistributedDataParallel)
-
-
-def intersect_dicts(da, db, exclude=()):
-    # Dictionary intersection of matching keys and shapes, omitting 'exclude' keys, using da values
-    return {k: v for k, v in da.items() if k in db and not any(x in k for x in exclude) and v.shape == db[k].shape}
 
 
 def initialize_weights(model):
@@ -79,7 +72,7 @@ def initialize_weights(model):
 
 
 def find_modules(model, mclass=nn.Conv2d):
-    # Finds layer indices matching module class 'mclass'
+    # finds layer indices matching module class 'mclass'
     return [i for i, m in enumerate(model.module_list) if isinstance(m, mclass)]
 
 
@@ -104,31 +97,31 @@ def prune(model, amount=0.3):
 
 
 def fuse_conv_and_bn(conv, bn):
-    # Fuse convolution and batchnorm layers https://tehnokv.com/posts/fusing-batchnorm-and-conv/
+    # https://tehnokv.com/posts/fusing-batchnorm-and-conv/
+    with torch.no_grad():
+        # init
+        fusedconv = nn.Conv2d(conv.in_channels,
+                              conv.out_channels,
+                              kernel_size=conv.kernel_size,
+                              stride=conv.stride,
+                              padding=conv.padding,
+                              bias=True).to(conv.weight.device)
 
-    # init
-    fusedconv = nn.Conv2d(conv.in_channels,
-                          conv.out_channels,
-                          kernel_size=conv.kernel_size,
-                          stride=conv.stride,
-                          padding=conv.padding,
-                          groups=conv.groups,
-                          bias=True).requires_grad_(False).to(conv.weight.device)
+        # prepare filters
+        w_conv = conv.weight.clone().view(conv.out_channels, -1)
+        w_bn = torch.diag(bn.weight.div(torch.sqrt(bn.eps + bn.running_var)))
+        fusedconv.weight.copy_(torch.mm(w_bn, w_conv).view(fusedconv.weight.size()))
 
-    # prepare filters
-    w_conv = conv.weight.clone().view(conv.out_channels, -1)
-    w_bn = torch.diag(bn.weight.div(torch.sqrt(bn.eps + bn.running_var)))
-    fusedconv.weight.copy_(torch.mm(w_bn, w_conv).view(fusedconv.weight.size()))
+        # prepare spatial bias
+        b_conv = torch.zeros(conv.weight.size(0), device=conv.weight.device) if conv.bias is None else conv.bias
+        b_bn = bn.bias - bn.weight.mul(bn.running_mean).div(torch.sqrt(bn.running_var + bn.eps))
+        fusedconv.bias.copy_(torch.mm(w_bn, b_conv.reshape(-1, 1)).reshape(-1) + b_bn)
 
-    # prepare spatial bias
-    b_conv = torch.zeros(conv.weight.size(0), device=conv.weight.device) if conv.bias is None else conv.bias
-    b_bn = bn.bias - bn.weight.mul(bn.running_mean).div(torch.sqrt(bn.running_var + bn.eps))
-    fusedconv.bias.copy_(torch.mm(w_bn, b_conv.reshape(-1, 1)).reshape(-1) + b_bn)
-
-    return fusedconv
+        return fusedconv
 
 
-def model_info(model, verbose=False):
+def model_info(model, verbose=False, imgsz=64, device='cpu'):
+    device = select_device(device)
     # Plots a line-by-line description of a PyTorch model
     n_p = sum(x.numel() for x in model.parameters())  # number parameters
     n_g = sum(x.numel() for x in model.parameters() if x.requires_grad)  # number gradients
@@ -141,25 +134,26 @@ def model_info(model, verbose=False):
 
     try:  # FLOPS
         from thop import profile
-        flops = profile(deepcopy(model), inputs=(torch.zeros(1, 3, 64, 64),), verbose=False)[0] / 1E9 * 2
-        fs = ', %.1f GFLOPS' % (flops * 100)  # 640x640 FLOPS
+        flops = profile(deepcopy(model), inputs=(torch.zeros(1, 3, imgsz, imgsz).to(device),), verbose=verbose)[0] / 1E9 * 2
+        fs = ', %.1f GFLOPS_%dx%d' % (flops, imgsz, imgsz)  # FLOPS
     except:
         fs = ''
 
-    logger.info(
-        'Model Summary: %g layers, %g parameters, %g gradients%s' % (len(list(model.parameters())), n_p, n_g, fs))
+    print('Model Summary: %g layers, %g parameters, %g gradients%s' % (len(list(model.parameters())), n_p, n_g, fs))
 
 
 def load_classifier(name='resnet101', n=2):
     # Loads a pretrained model reshaped to n-class output
-    model = torchvision.models.__dict__[name](pretrained=True)
+    model = models.__dict__[name](pretrained=True)
 
-    # ResNet model properties
-    # input_size = [3, 224, 224]
-    # input_space = 'RGB'
-    # input_range = [0, 1]
-    # mean = [0.485, 0.456, 0.406]
-    # std = [0.229, 0.224, 0.225]
+    # Display model properties
+    input_size = [3, 224, 224]
+    input_space = 'RGB'
+    input_range = [0, 1]
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
+    for x in [input_size, input_space, input_range, mean, std]:
+        print(x + ' =', eval(x))
 
     # Reshape output to n classes
     filters = model.fc.weight.shape[1]
@@ -171,16 +165,13 @@ def load_classifier(name='resnet101', n=2):
 
 def scale_img(img, ratio=1.0, same_shape=False):  # img(16,3,256,416), r=ratio
     # scales img(bs,3,y,x) by ratio
-    if ratio == 1.0:
-        return img
-    else:
-        h, w = img.shape[2:]
-        s = (int(h * ratio), int(w * ratio))  # new size
-        img = F.interpolate(img, size=s, mode='bilinear', align_corners=False)  # resize
-        if not same_shape:  # pad/crop img
-            gs = 32  # (pixels) grid size
-            h, w = [math.ceil(x * ratio / gs) * gs for x in (h, w)]
-        return F.pad(img, [0, w - s[1], 0, h - s[0]], value=0.447)  # value = imagenet mean
+    h, w = img.shape[2:]
+    s = (int(h * ratio), int(w * ratio))  # new size
+    img = F.interpolate(img, size=s, mode='bilinear', align_corners=False)  # resize
+    if not same_shape:  # pad/crop img
+        gs = 32  # (pixels) grid size
+        h, w = [math.ceil(x * ratio / gs) * gs for x in (h, w)]
+    return F.pad(img, [0, w - s[1], 0, h - s[0]], value=0.447)  # value = imagenet mean
 
 
 def copy_attr(a, b, include=(), exclude=()):
