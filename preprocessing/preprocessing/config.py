@@ -60,10 +60,10 @@ def command_line_parser():
                         default=True,
                         help='Motion compensate point clouds')
 
-    parser.add_argument('--generate_rgbd',
-                        dest='generate_rgbd',
+    parser.add_argument('--generate_dm',
+                        dest='generate_dm',
                         action='store_true',
-                        help='Generate RGBD images')
+                        help='Generate DM images')
 
     parser.add_argument(
         '-i',

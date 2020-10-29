@@ -5,10 +5,7 @@ import os
 import sys
 
 
-def main():
-    cfg = command_line_parser()
-
-    # For every time stamp have 3x images, 2x point clouds, 1x cone positions
+def get_data_folder_paths(cfg):
     data_folder_paths = []
 
     if cfg.preprocess_all:
@@ -30,6 +27,16 @@ def main():
 
         data_folder_paths.append(cfg.data_folder_path)
 
+    return data_folder_paths
+
+
+def main():
+    cfg = command_line_parser()
+
+    # For every time stamp have 3x images, 2x point clouds,
+    # 1x cone positions, 1x car position
+    data_folder_paths = get_data_folder_paths(cfg)
+
     for idx, data_folder_path in enumerate(data_folder_paths):
         print("\nData folder {}: {}/{}".format(
             os.path.basename(data_folder_path), idx + 1,
@@ -40,15 +47,14 @@ def main():
         data_preprocesser_instance = DataPreprocesser(cfg)
         if cfg.match_data:
             data_preprocesser_instance.match_data_step_1()
-
             data_preprocesser_instance.match_data_step_2(
                 cfg.motion_compensation)
 
         if cfg.icp_rots:
             data_preprocesser_instance.extract_rotations()
 
-        if cfg.generate_rgbd:
-            data_preprocesser_instance.generate_rgbd()
+        if cfg.generate_dm:
+            data_preprocesser_instance.generate_dm()
 
 
 if __name__ == "__main__":

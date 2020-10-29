@@ -270,8 +270,7 @@ if __name__ == '__main__':
     extrinsics_path = os.path.join(cfg.test_day_folder,
                                    'static_transformations')
     os.makedirs(extrinsics_path, exist_ok=True)
-    f_name = os.path.join(extrinsics_path,
-                          f'extrinsics_lidar_{cfg.camera}.yaml')
+    f_name = os.path.join(extrinsics_path, f'extrinsics_mrh_{cfg.camera}.yaml')
     fs_write = cv2.FileStorage(f_name, cv2.FILE_STORAGE_WRITE)
     fs_write.write('R_mtx', R)
     fs_write.write('t_mtx', t)
@@ -279,8 +278,7 @@ if __name__ == '__main__':
 
     if cfg.check_projection:
         fs_read = cv2.FileStorage(
-            os.path.join(extrinsics_path,
-                         f'extrinsics_lidar_{cfg.camera}.yaml'),
+            os.path.join(extrinsics_path, f'extrinsics_mrh_{cfg.camera}.yaml'),
             cv2.FILE_STORAGE_READ)
         R = fs_read.getNode('R_mtx').mat()
         t = fs_read.getNode('t_mtx').mat()
