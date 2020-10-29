@@ -379,7 +379,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
         # Define labels
         self.label_files = [
-            x.replace('inputs', 'labels').replace('/img', '').replace(
+            x.replace('Inputs', 'Labels').replace('/img', '').replace(
                 os.path.splitext(x)[-1], '.txt')
             for x in self.img_files
         ]
@@ -387,7 +387,6 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             x.replace('img', 'dm').replace(os.path.splitext(x)[-1], '.bin')
             for x in self.img_files
         ]
-
         # Check cache
         cache_path = str(Path(
             self.label_files[0]).parent) + '.cache'  # cached labels
@@ -399,6 +398,8 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         else:
             cache = self.cache_labels(cache_path)  # cache
 
+        print(cache.keys())
+        # exit()
         # Get labels
         labels, shapes = zip(*[cache[x] for x in self.img_files])
         self.shapes = np.array(shapes, dtype=np.float64)
@@ -437,9 +438,10 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         for i, file in enumerate(pbar):
             l = self.labels[i]  # label
             if l.shape[0]:
-                assert l.shape[1] == 5, '> 5 label columns: %s' % file
+                assert l.shape[1] == 6, '> 6 label columns: %s' % file
                 assert (l >= 0).all(), 'negative labels: %s' % file
-                assert (l[:, 1:] <= 1).all(
+                # changed to 2: to adpat depth
+                assert (l[:, 2:] <= 1).all(
                 ), 'non-normalized or out of bounds coordinate labels: %s' % file
                 if np.unique(l,
                              axis=0).shape[0] < l.shape[0]:  # duplicate rows
