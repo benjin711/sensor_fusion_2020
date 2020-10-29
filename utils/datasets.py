@@ -596,14 +596,22 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             if x.size > 0:
                 # Normalized xywh to pixel xyxy format
                 labels = x.copy()
+                # labels[:,
+                # 1] = ratio[0] * w * (x[:, 1] -
+                #                      x[:, 3] / 2) + pad[0]  # pad width
+                # labels[:,
+                # 2] = ratio[1] * h * (x[:, 2] -
+                #                      x[:, 4] / 2) + pad[1]  # pad height
+                # labels[:, 3] = ratio[0] * w * (x[:, 1] + x[:, 3] / 2) + pad[0]
+                # labels[:, 4] = ratio[1] * h * (x[:, 2] + x[:, 4] / 2) + pad[1]
                 labels[:,
-                       1] = ratio[0] * w * (x[:, 1] -
-                                            x[:, 3] / 2) + pad[0]  # pad width
+                       2] = ratio[0] * w * (x[:, 2] -
+                                            x[:, 4] / 2) + pad[0]  # pad width
                 labels[:,
-                       2] = ratio[1] * h * (x[:, 2] -
-                                            x[:, 4] / 2) + pad[1]  # pad height
-                labels[:, 3] = ratio[0] * w * (x[:, 1] + x[:, 3] / 2) + pad[0]
-                labels[:, 4] = ratio[1] * h * (x[:, 2] + x[:, 4] / 2) + pad[1]
+                       3] = ratio[1] * h * (x[:, 3] -
+                                            x[:, 5] / 2) + pad[1]  # pad height
+                labels[:, 4] = ratio[0] * w * (x[:, 2] + x[:, 4] / 2) + pad[0]
+                labels[:, 5] = ratio[1] * h * (x[:, 3] + x[:, 5] / 2) + pad[1]
 
         if self.augment:
             # Augment imagespace
@@ -628,11 +636,11 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         nL = len(labels)  # number of labels
         if nL:
             # convert xyxy to xywh
-            labels[:, 1:5] = xyxy2xywh(labels[:, 1:5])
+            labels[:, 2:] = xyxy2xywh(labels[:, 1:5])
 
             # Normalize coordinates 0 - 1
-            labels[:, [2, 4]] /= img.shape[0]  # height
-            labels[:, [1, 3]] /= img.shape[1]  # width
+            labels[:, [3, 5]] /= img.shape[0]  # height
+            labels[:, [2, 4]] /= img.shape[1]  # width
 
         if self.augment:
             # random left-right flip
@@ -640,21 +648,24 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             if lr_flip and random.random() < 0.5:
                 img = np.fliplr(img)
                 if nL:
-                    labels[:, 1] = 1 - labels[:, 1]
+                    labels[:, 2] = 1 - labels[:, 2]
 
             # random up-down flip
             ud_flip = False
             if ud_flip and random.random() < 0.5:
                 img = np.flipud(img)
                 if nL:
-                    labels[:, 2] = 1 - labels[:, 2]
+                    labels[:, 3] = 1 - labels[:, 3]
 
         labels_out = torch.zeros((nL, 7))
         if nL:
             labels_out[:, 1:] = torch.from_numpy(labels)
 
         # Convert
-        img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, to 3x416x416
+        channels = np.split(img, 5, axis=2)
+        img = np.concatenate([channels[2], channels[1], channels[0],
+                              channels[3], channels[4]], axis=2)
+        img = img.transpose(2, 0, 1)  # BGR to RGB, to 3x416x416
         img = np.ascontiguousarray(img)
 
         return torch.from_numpy(img), labels_out, self.img_files[index], shapes
@@ -925,7 +936,7 @@ def random_affine(img,
     if n:
         # warp points
         xy = np.ones((n * 4, 3))
-        xy[:, :2] = targets[:, [1, 2, 3, 4, 1, 4, 3, 2]].reshape(
+        xy[:, :2] = targets[:, [2, 3, 4, 5, 2, 5, 4, 3]].reshape(
             n * 4, 2)  # x1y1, x2y2, x1y2, x2y1
         xy = (xy @ M.T)[:, :2].reshape(n, 8)
 
@@ -956,7 +967,7 @@ def random_affine(img,
         i = (w > 2) & (h > 2) & (area / (area0 * s + 1e-16) > 0.2) & (ar < 20)
 
         targets = targets[i]
-        targets[:, 1:5] = xy[i]
+        targets[:, 2:] = xy[i]
 
     return img, targets
 
