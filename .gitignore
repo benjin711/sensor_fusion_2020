@@ -16,3 +16,6 @@ venv/
 
 # Pickles
 **.pkl
+
+# Generated
+runs
