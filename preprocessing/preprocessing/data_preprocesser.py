@@ -248,7 +248,6 @@ class DataPreprocesser:
 
             if not self.keep_orig_data_folders:
                 shutil.rmtree(src_image_folder_path)
-                # os.rename(dst_image_folder_path, src_image_folder_path)
 
     def match_data_step_2(self, motion_compensation):
         """
@@ -364,8 +363,6 @@ class DataPreprocesser:
 
             if not self.keep_orig_data_folders:
                 shutil.rmtree(src_point_cloud_folder_path)
-                # os.rename(dst_point_cloud_folder_path,
-                #           src_point_cloud_folder_path)
 
     def load_camera_transforms(self):
         """Open the calibration YAMLs and compute the transform
@@ -573,7 +570,6 @@ class DataPreprocesser:
 
         if not self.keep_orig_data_folders:
             shutil.rmtree(src_gnss_folder_path)
-            # os.rename(dst_gnss_folder_path, src_gnss_folder_path)
 
     def extract_rotations(self):
         # Determine the rotation between the two point clouds using ICP
