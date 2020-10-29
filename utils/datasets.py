@@ -578,7 +578,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
         else:
             # Load image
-            img, (h0, w0), (h, w) = loadx_image(self, index)
+            img, (h0, w0), (h, w) = load_image(self, index)
 
             # Letterbox
             shape = self.batch_shapes[self.batch[
@@ -649,7 +649,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                 if nL:
                     labels[:, 2] = 1 - labels[:, 2]
 
-        labels_out = torch.zeros((nL, 6))
+        labels_out = torch.zeros((nL, 7))
         if nL:
             labels_out[:, 1:] = torch.from_numpy(labels)
 
@@ -665,6 +665,16 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         for i, l in enumerate(label):
             l[:, 0] = i  # add target image index for build_targets()
         return torch.stack(img, 0), torch.cat(label, 0), path, shapes
+
+
+def resize_dm(dm, scale):
+    h0, w0 = dm.shape[:2]
+    indices = np.where(dm[:, :, 1] > 0)
+    new_indices = (np.array(indices[0] * scale).astype(np.int),
+                   np.array(indices[1] * scale).astype(np.int))
+    output = np.zeros((int(h0 * scale), int(w0 * scale), 2))
+    output[new_indices] = dm[indices]
+    return output
 
 
 def load_image(self, index):
@@ -684,8 +694,11 @@ def load_image(self, index):
         r = self.img_size / max(h0, w0)  # resize image to img_size
         if r != 1:  # always resize down, only resize up if training with augmentation
             interp = cv2.INTER_AREA if r < 1 and not self.augment else cv2.INTER_LINEAR
-            img = cv2.resize(img, (int(w0 * r), int(h0 * r)),
+            dm = resize_dm(img[:, :, 3:], r)
+            img = cv2.resize(img[:, :, :3].astype(np.uint8),
+                             (int(w0 * r), int(h0 * r)),
                              interpolation=interp)
+            img = np.concatenate((img, dm), axis=-1)
         return img, (h0, w0), img.shape[:2]  # img, hw_original, hw_resized
     else:
         return self.imgs[index], self.img_hw0[index], self.img_hw[
@@ -823,7 +836,7 @@ def letterbox(img,
 
     # Compute padding
     ratio = r, r  # width, height ratios
-    new_unpad = int(round(shape[1] * r)), int(round(shape[0] * r))
+    new_unpad = int(shape[1] * r), int(shape[0] * r)
     dw, dh = new_shape[1] - new_unpad[0], new_shape[0] - new_unpad[
         1]  # wh padding
     if auto:  # minimum rectangle
@@ -838,16 +851,23 @@ def letterbox(img,
     dh /= 2
 
     if shape[::-1] != new_unpad:  # resize
-        img = cv2.resize(img, new_unpad, interpolation=cv2.INTER_LINEAR)
-    top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
-    left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
-    img = cv2.copyMakeBorder(img,
-                             top,
-                             bottom,
-                             left,
-                             right,
-                             cv2.BORDER_CONSTANT,
-                             value=color)  # add border
+        dm = resize_dm(img[:, :, 3:], r)
+        img = cv2.resize(img[:, :, :3].astype(np.uint8), new_unpad,
+                         interpolation=cv2.INTER_LINEAR)
+        img = np.concatenate((img, dm), axis=-1)
+
+    # JP: Turned off boarder as the function actually changed image shape
+    #      Don't think boarder is important
+    # top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
+    # left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
+    # img[:, :, 3] = cv2.copyMakeBorder(img[:, :, :3].astype(np.uint8),
+    #                          top,
+    #                          bottom,
+    #                          left,
+    #                          right,
+    #                          cv2.BORDER_CONSTANT,
+    #                          value=color)  # add border
+
     return img, ratio, (dw, dh)
 
 

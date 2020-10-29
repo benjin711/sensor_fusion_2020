@@ -509,12 +509,13 @@ def compute_loss(p, targets, model):  # predictions, targets, model
 
 
 def build_targets(p, targets, model):
-    # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
+    # Build targets for compute_loss(),
+    # input targets(image,class, depth, x, y, w,h)
     det = model.module.model[-1] if type(model) in (nn.parallel.DataParallel, nn.parallel.DistributedDataParallel) \
         else model.model[-1]  # Detect() module
     na, nt = det.na, targets.shape[0]  # number of anchors, targets
     tcls, tbox, indices, anch = [], [], [], []
-    gain = torch.ones(6, device=targets.device)  # normalized to gridspace gain
+    gain = torch.ones(7, device=targets.device)  # normalized to gridspace gain
     off = torch.tensor([[1, 0], [0, 1], [-1, 0], [0, -1]], device=targets.device).float()  # overlap offsets
     at = torch.arange(na).view(na, 1).repeat(1, nt)  # anchor tensor, same as .repeat_interleave(nt)
 
@@ -522,7 +523,7 @@ def build_targets(p, targets, model):
     style = 'rect4'
     for i in range(det.nl):
         anchors = det.anchors[i]
-        gain[2:] = torch.tensor(p[i].shape)[[3, 2, 3, 2]]  # xyxy gain
+        gain[3:] = torch.tensor(p[i].shape)[[3, 2, 3, 2]]  # xyxy gain
 
         # Match targets to anchors
         a, t, offsets = [], targets * gain, 0
@@ -1021,7 +1022,8 @@ def plot_images(images, targets, paths=None, fname='images.jpg', names=None, max
         if scale_factor < 1:
             img = cv2.resize(img, (w, h))
 
-        mosaic[block_y:block_y + h, block_x:block_x + w, :] = img
+        mosaic[block_y:block_y + h, block_x:block_x + w, :] = \
+            img[:, :, :3].astype(np.uint8)
         if len(targets) > 0:
             image_targets = targets[targets[:, 0] == i]
             boxes = xywh2xyxy(image_targets[:, 2:6]).T
