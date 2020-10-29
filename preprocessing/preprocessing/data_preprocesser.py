@@ -733,99 +733,14 @@ class DataPreprocesser:
                 ) for rel_rot in relative_rotations)
 
     def generate_dm(self):
-
-        cameras = ["forward", "left", "right"]
-        lidars = ["fw", "mrh"]
-
-        def get_mrh_cam_transformations():
-            transformations_dict = {}
-
-            static_transformations_folder = os.path.join(
-                self.data_folder_path, "..", "..", "static_transformations")
-
-            calibration_files = os.listdir(static_transformations_folder)
-
-            if all([
-                    "extrinsics_mrh_{}.yaml".format(camera)
-                    in calibration_files for camera in cameras
-            ]):
-                for camera in cameras:
-                    extrinsics_file = os.path.join(
-                        static_transformations_folder,
-                        "extrinsics_mrh_{}.yaml".format(camera))
-                    reader = cv2.FileStorage(extrinsics_file,
-                                             cv2.FILE_STORAGE_READ)
-                    R = reader.getNode('R_mtx').mat()
-                    t = reader.getNode('t_mtx').mat()
-                    T = np.eye(4)
-                    T[:3, :3] = R
-                    T[:3, 3] = t.squeeze()
-                    transformations_dict[camera] = T
-            else:
-                print(
-                    "Extrinsic calibration between mrh -> cameras are missing in {static_calibration_folder}!"
-                )
-                sys.exit()
-
-            return transformations_dict
-
-        def get_intrinsics():
-            K_dict = {}
-
-            static_transformations_folder = os.path.join(
-                self.data_folder_path, "..", "..", "static_transformations")
-
-            calibration_files = os.listdir(static_transformations_folder)
-
-            if all([
-                    "{}.yaml".format(camera) in calibration_files
-                    for camera in cameras
-            ]):
-                for camera in cameras:
-                    camera_calib = load_camera_calib(
-                        os.path.join(static_transformations_folder,
-                                     "{}.yaml".format(camera)))
-                    K_dict[camera] = camera_calib['camera_matrix']
-            else:
-                print("Intrinsics are not available in {}!".format(
-                    static_transformations_folder))
-                sys.exit()
-
-            return K_dict
-
-        def get_pc_files(data_folder_path):
-            pc_files_dict = {}
-
-            for lidar in lidars:
-                pc_folder = os.path.join(self.data_folder_path,
-                                         "{}_lidar_filtered".format(lidar))
-
-                if os.path.exists(pc_folder):
-                    pc_files = os.listdir(pc_folder)
-                    pc_files.remove("timestamps.txt")
-                    pc_files_dict[lidar] = sorted([
-                        os.path.join(pc_folder, pc_file)
-                        for pc_file in pc_files
-                    ])
-
-            return pc_files_dict
-
-        def get_img_files(data_folder_path):
-            img_files_dict = {}
-
-            for camera in cameras:
-                img_folder = os.path.join(data_folder_path,
-                                          "{}_camera_filtered".format(camera))
-                img_files = os.listdir(img_folder)
-                img_files.remove("timestamps.txt")
-                img_files_dict[camera] = sorted([
-                    os.path.join(img_folder, img_file)
-                    for img_file in img_files
-                ])
-
-            return img_files_dict
-
+        """
+        Generates the DM layers given the current data folder
+        """
         def concatenate_pcs(pc_files):
+            """
+            Reads the point clouds provided by a numpy array of point
+            cloud file paths
+            """
             pc = np.zeros((0, 3))
 
             for pc_file in pc_files.tolist():
@@ -835,46 +750,26 @@ class DataPreprocesser:
 
             return pc
 
-        def point_to_pixel(pcd, R, t, K, img_shape):
-            '''
-            Generate pixel coordinate for all points
-            '''
-            one_mat = np.ones((pcd.shape[0], 1))
-            point_cloud = np.concatenate((pcd, one_mat), axis=1)
+        def depth_color(points, min_d=0, max_d=30):
+            """
+            Print Color(HSV's H value) corresponding to distance(m)
+            close distance = red , far distance = blue
+            """
+            dist = np.sqrt(
+                np.add(np.power(points[:, 0], 2), np.power(points[:, 1], 2),
+                       np.power(points[:, 2], 2)))
+            np.clip(dist, 0, max_d, out=dist)
 
-            transformation = np.hstack((R, t.reshape(3, 1)))
-
-            # Transform points into the camera frame
-            point_cloud_cam = np.matmul(transformation, point_cloud.T)
-
-            # Ignore points behind the camera (z < 0)
-            z_filter = point_cloud_cam[2, :] > 0
-            pixels_cam = np.matmul(K, point_cloud_cam)
-
-            # Normalize to pixels
-            pixels_cam = pixels_cam[::] / pixels_cam[::][-1]
-            pixels = np.delete(pixels_cam, 2, axis=0)
-
-            # Ignore the ones outside of the image
-            pixels = pixels.T
-            greater_zero_filter = np.logical_and(pixels[:, 0] > 0,
-                                                 pixels[:, 1] > 0)
-            smaller_image_shape_filter = np.logical_and(
-                pixels[:, 0] < img_shape[1], pixels[:, 1] < img_shape[0])
-
-            pixel_filter = np.logical_and(
-                np.logical_and(greater_zero_filter,
-                               smaller_image_shape_filter), z_filter)
-
-            return pixels, pixel_filter
+            return (((dist - min_d) / (max_d - min_d)) * 128).astype(np.uint8)
 
         def project(points, image, R, t, K, debug=False):
             '''
-            Draw points within corresponding camera's FoV on image provided.
+            Project points onto the image and generate the DM layers
             '''
             depth_layer = np.zeros(image.shape[:-1], dtype=np.float32)
 
-            pixels, pixel_filter = point_to_pixel(points, R, t, K, image.shape)
+            pixels, pixel_filter = project_points_to_pixels(
+                points, R, t, K, image.shape)
 
             # Filter points and pixels
             points = points[pixel_filter]
@@ -909,38 +804,18 @@ class DataPreprocesser:
 
             return dm
 
-        def depth_color(points, min_d=0, max_d=30):
-            """
-            print Color(HSV's H value) corresponding to distance(m)
-            close distance = red , far distance = blue
-            """
-            dist = np.sqrt(
-                np.add(np.power(points[:, 0], 2), np.power(points[:, 1], 2),
-                       np.power(points[:, 2], 2)))
-            np.clip(dist, 0, max_d, out=dist)
+        cameras = ["forward", "left", "right"]
+        lidars = ["fw", "mrh"]
 
-            return (((dist - min_d) / (max_d - min_d)) * 128).astype(np.uint8)
+        static_transformations_folder = os.path.join(self.data_folder_path,
+                                                     "..", "..",
+                                                     "static_transformations")
 
-        def draw_points(points, image, R, t, K):
-            '''
-            Draw points within corresponding camera's FoV on image provided.
-            If no image provided, points are drawn on an empty(black) background.
-            '''
-            hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-
-            color = depth_color(points)
-            pixels, pixel_filter = point_to_pixel(points, R, t, rect=K)
-            pixels = pixels[pixel_filter]
-            for i in range(pixels.shape[1]):
-                cv2.circle(hsv_image,
-                           (np.int32(pixels[0, i]), np.int32(pixels[1, i])), 2,
-                           (int(color[i]), 255, 255), -1)
-            return cv2.cvtColor(hsv_image, cv2.COLOR_HSV2BGR)
-
-        T_mrh_cam_dict = get_mrh_cam_transformations()
-        K_dict = get_intrinsics()
-        pc_files_dict = get_pc_files(self.data_folder_path)
-        img_files_dict = get_img_files(self.data_folder_path)
+        T_mrh_cam_dict = get_mrh_cam_transformations(
+            static_transformations_folder, cameras)
+        K_dict = get_intrinsics(static_transformations_folder, cameras)
+        pc_files_dict = get_pc_files(self.data_folder_path, lidars)
+        img_files_dict = get_img_files(self.data_folder_path, cameras)
 
         for camera in cameras:
 
