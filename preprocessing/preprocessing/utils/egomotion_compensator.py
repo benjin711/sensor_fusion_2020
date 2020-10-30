@@ -30,7 +30,7 @@ class EgomotionCompensator:
     def egomotion_compensation(self, point_cloud_file, src_frame,
                                reference_timestamp, motion_compensation):
         """
-        Transforms points from fw_lidar or mrh_lidar frame to the egomotion frame
+        Transforms points from fw_lidar or mrh_lidar frame to the mrh frame
         at the time of the reference_timestamp
         """
         point_cloud = read_point_cloud(point_cloud_file)

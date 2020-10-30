@@ -205,6 +205,8 @@ def load_camera_calib(camera_fn):
         camera_data, 'distortion_coefficients')
     calib['image_width'] = camera_data['image_width']
     calib['image_height'] = camera_data['image_height']
+    calib['projection_matrix'] = load_rosparam_mat(camera_data,
+                                                   'projection_matrix')
 
     return calib
 
@@ -227,3 +229,130 @@ def undistort_image(data_folder_path, image_path, camera):
 
     # Write back to file
     cv2.imwrite(image_path, img)
+
+
+def get_mrh_cam_transformations(static_transformations_folder, cameras):
+    transformations_dict = {}
+
+    calibration_files = os.listdir(static_transformations_folder)
+
+    if all([
+            "extrinsics_mrh_{}.yaml".format(camera) in calibration_files
+            for camera in cameras
+    ]):
+        for camera in cameras:
+            extrinsics_file = os.path.join(
+                static_transformations_folder,
+                "extrinsics_mrh_{}.yaml".format(camera))
+            reader = cv2.FileStorage(extrinsics_file, cv2.FILE_STORAGE_READ)
+            R = reader.getNode('R_mtx').mat()
+            t = reader.getNode('t_mtx').mat()
+            T = np.eye(4)
+            T[:3, :3] = R
+            T[:3, 3] = t.squeeze()
+            transformations_dict[camera] = T
+    else:
+        print(
+            "Extrinsic calibration between mrh -> cameras are missing in {static_calibration_folder}!"
+        )
+        sys.exit()
+
+    return transformations_dict
+
+
+def get_intrinsics(static_transformations_folder, cameras):
+    """
+    Returns a dict with the camera matrices corresponding to the
+    cameras specified in the cameras list
+    """
+    K_dict = {}
+
+    calibration_files = os.listdir(static_transformations_folder)
+
+    if all(
+        ["{}.yaml".format(camera) in calibration_files for camera in cameras]):
+        for camera in cameras:
+            camera_calib = load_camera_calib(
+                os.path.join(static_transformations_folder,
+                             "{}.yaml".format(camera)))
+            K_dict[camera] = camera_calib['camera_matrix']
+    else:
+        print("Intrinsics are not available in {}!".format(
+            static_transformations_folder))
+        sys.exit()
+
+    return K_dict
+
+
+def get_pc_files(data_folder_path, lidars):
+    """
+    Returns a dict with the file paths to the pc files
+    of the lidars specified by lidars and data_folder_path
+    """
+    pc_files_dict = {}
+
+    for lidar in lidars:
+        pc_folder = os.path.join(data_folder_path,
+                                 "{}_lidar_filtered".format(lidar))
+
+        if os.path.exists(pc_folder):
+            pc_files = os.listdir(pc_folder)
+            pc_files.remove("timestamps.txt")
+            pc_files_dict[lidar] = sorted(
+                [os.path.join(pc_folder, pc_file) for pc_file in pc_files])
+
+    return pc_files_dict
+
+
+def get_img_files(data_folder_path, cameras):
+    """
+    Returns a dict with the file paths to the img files
+    of the cameras specified by camera and data_folder_path
+    """
+    img_files_dict = {}
+
+    for camera in cameras:
+        img_folder = os.path.join(data_folder_path,
+                                  "{}_camera_filtered".format(camera))
+        img_files = os.listdir(img_folder)
+        img_files.remove("timestamps.txt")
+        img_files_dict[camera] = sorted(
+            [os.path.join(img_folder, img_file) for img_file in img_files])
+
+    return img_files_dict
+
+
+def project_points_to_pixels(pcd, R, t, K, img_shape):
+    '''
+    Generate pixel coordinates for all points and also
+    calculate a mask which masks all valid pixels that come
+    from points in front of the camera and lie within
+    the image boundaries
+    '''
+    one_mat = np.ones((pcd.shape[0], 1))
+    point_cloud = np.concatenate((pcd, one_mat), axis=1)
+
+    transformation = np.hstack((R, t.reshape(3, 1)))
+
+    # Transform points into the camera frame
+    point_cloud_cam = np.matmul(transformation, point_cloud.T)
+
+    # Ignore points behind the camera (z < 0)
+    z_filter = point_cloud_cam[2, :] > 0
+    pixels_cam = np.matmul(K, point_cloud_cam)
+
+    # Normalize to pixels
+    pixels_cam = pixels_cam[::] / pixels_cam[::][-1]
+    pixels = np.delete(pixels_cam, 2, axis=0)
+
+    # Ignore the ones outside of the image
+    pixels = pixels.T
+    greater_zero_filter = np.logical_and(pixels[:, 0] > 0, pixels[:, 1] > 0)
+    smaller_image_shape_filter = np.logical_and(pixels[:, 0] < img_shape[1],
+                                                pixels[:, 1] < img_shape[0])
+
+    pixel_filter = np.logical_and(
+        np.logical_and(greater_zero_filter, smaller_image_shape_filter),
+        z_filter)
+
+    return pixels, pixel_filter

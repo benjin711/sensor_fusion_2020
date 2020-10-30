@@ -58,10 +58,10 @@ class DataPreprocesser:
 
     def match_data_step_1(self):
         """
-        Matches triples of images with the same time stamp. This function
-        makes sure that images with the same time stamp also have the
-        same index. This function includes a black image whenever an image
-        is missing for a specific time stamp.
+        - Matches triples of images with the same time stamp
+        - Images with the same timestamp will have the same index
+        - A black image is included whenever an image is missing for a specific time stamp
+        - Car position and cone positions are also matched to every time stamp
         """
 
         # Read in the camera timestamp files
@@ -248,7 +248,6 @@ class DataPreprocesser:
 
             if not self.keep_orig_data_folders:
                 shutil.rmtree(src_image_folder_path)
-                os.rename(dst_image_folder_path, src_image_folder_path)
 
     def match_data_step_2(self, motion_compensation):
         """
@@ -364,8 +363,6 @@ class DataPreprocesser:
 
             if not self.keep_orig_data_folders:
                 shutil.rmtree(src_point_cloud_folder_path)
-                os.rename(dst_point_cloud_folder_path,
-                          src_point_cloud_folder_path)
 
     def load_camera_transforms(self):
         """Open the calibration YAMLs and compute the transform
@@ -488,7 +485,7 @@ class DataPreprocesser:
         print("Filtering GNSS and Cones\n")
         src_gnss_folder_path = os.path.join(self.data_folder_path, "gnss")
         dst_gnss_folder_path = os.path.join(self.data_folder_path,
-                                            "gnss_filtered")
+                                            "car_position_filtered")
         dst_forward_cones_folder_path = os.path.join(self.data_folder_path,
                                                      "forward_cones_filtered")
         dst_left_cones_folder_path = os.path.join(self.data_folder_path,
@@ -573,7 +570,6 @@ class DataPreprocesser:
 
         if not self.keep_orig_data_folders:
             shutil.rmtree(src_gnss_folder_path)
-            os.rename(dst_gnss_folder_path, src_gnss_folder_path)
 
     def extract_rotations(self):
         # Determine the rotation between the two point clouds using ICP
@@ -731,3 +727,127 @@ class DataPreprocesser:
                     rel_rot[4],
                     rel_rot[5],
                 ) for rel_rot in relative_rotations)
+
+    def generate_dm(self):
+        """
+        Generates the DM layers given the current data folder
+        """
+        def concatenate_pcs(pc_files):
+            """
+            Reads the point clouds provided by a numpy array of point
+            cloud file paths
+            """
+            pc = np.zeros((0, 3))
+
+            for pc_file in pc_files.tolist():
+                curr_pc = np.fromfile(pc_file,
+                                      dtype=np.float64).reshape(-1, 6)[:, :3]
+                pc = np.vstack((pc, curr_pc))
+
+            return pc
+
+        def depth_color(points, min_d=0, max_d=30):
+            """
+            Print Color(HSV's H value) corresponding to distance(m)
+            close distance = red , far distance = blue
+            """
+            dist = np.sqrt(
+                np.add(np.power(points[:, 0], 2), np.power(points[:, 1], 2),
+                       np.power(points[:, 2], 2)))
+            np.clip(dist, 0, max_d, out=dist)
+
+            return (((dist - min_d) / (max_d - min_d)) * 128).astype(np.uint8)
+
+        def project(points, image, R, t, K, debug=False):
+            '''
+            Project points onto the image and generate the DM layers
+            '''
+            depth_layer = np.zeros(image.shape[:-1], dtype=np.float32)
+
+            pixels, pixel_filter = project_points_to_pixels(
+                points, R, t, K, image.shape)
+
+            # Filter points and pixels
+            points = points[pixel_filter]
+            pixels = pixels[pixel_filter]
+
+            if debug:
+                hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+                color = depth_color(points)
+
+            for i in range(pixels.shape[0]):
+                if debug:
+                    cv2.circle(
+                        hsv_image,
+                        (np.int32(pixels[i, 0]), np.int32(pixels[i, 1])), 2,
+                        (int(color[i]), 255, 255), -1)
+                new_depth = np.sqrt(np.sum(np.power(points[i, :], 2)))
+                curr_depth = depth_layer[np.int32(pixels[i, 1]),
+                                         np.int32(pixels[i, 0])]
+                if new_depth > curr_depth:
+                    depth_layer[np.int32(pixels[i, 1]),
+                                np.int32(pixels[i, 0])] = new_depth
+
+            depth_layer = np.expand_dims(depth_layer, 2)
+            mask_layer = (depth_layer > 0).astype(np.float32)
+            if debug:
+                projection = cv2.cvtColor(hsv_image, cv2.COLOR_HSV2BGR)
+                cv2.imshow('depth_mask', projection)
+                cv2.waitKey(0)
+                cv2.destroyAllWindows()
+
+            dm = np.concatenate((depth_layer, mask_layer), axis=-1)
+
+            return dm
+
+        cameras = ["forward", "left", "right"]
+        lidars = ["fw", "mrh"]
+
+        static_transformations_folder = os.path.join(self.data_folder_path,
+                                                     "..", "..",
+                                                     "static_transformations")
+
+        T_mrh_cam_dict = get_mrh_cam_transformations(
+            static_transformations_folder, cameras)
+        K_dict = get_intrinsics(static_transformations_folder, cameras)
+        pc_files_dict = get_pc_files(self.data_folder_path, lidars)
+        img_files_dict = get_img_files(self.data_folder_path, cameras)
+
+        for camera in cameras:
+
+            dst_dm_folder_path = os.path.join(self.data_folder_path,
+                                              "{}_dm".format(camera))
+            if os.path.exists(dst_dm_folder_path):
+                print(
+                    "The folder {}_dm exist already indicating that the data has already been extracted!"
+                    .format(camera))
+                print(
+                    "{}_dm will be removed and the data will be reextracted.".
+                    format(camera))
+                shutil.rmtree(dst_dm_folder_path)
+            os.makedirs(dst_dm_folder_path)
+
+            K = K_dict[camera]
+            T_mrh_cam = T_mrh_cam_dict[camera]
+            img_files = img_files_dict[camera]
+            pc_files = np.array([
+                list(pc_files_dict.items())[x][1]
+                for x in range(len(pc_files_dict.keys()))
+            ])
+
+            pbar = tqdm(total=len(img_files),
+                        desc="DM of {}_camera".format(camera))
+
+            for idx, img_file in enumerate(img_files):
+
+                pc = concatenate_pcs(pc_files[:, idx])
+                img = cv2.imread(img_file)
+
+                dm = project(pc, img, T_mrh_cam[:3, :3], T_mrh_cam[:3, 3], K)
+
+                dm.tofile(
+                    os.path.join(dst_dm_folder_path,
+                                 str(idx).zfill(8) + ".bin"))
+                pbar.update(1)
+
+            pbar.close()

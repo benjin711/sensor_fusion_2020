@@ -5,16 +5,7 @@ import os
 import sys
 
 
-def main():
-    cfg = command_line_parser()
-
-    # DEBUG START
-    cfg.keep_orig_data_folders
-    # DEBUG END
-
-    # Match images to triplets and generate the corresponding reference timestamps
-    # Then match point clouds, car RTK data and cone data to the triplets to create septuples
-
+def get_data_folder_paths(cfg):
     data_folder_paths = []
 
     if cfg.preprocess_all:
@@ -36,6 +27,16 @@ def main():
 
         data_folder_paths.append(cfg.data_folder_path)
 
+    return data_folder_paths
+
+
+def main():
+    cfg = command_line_parser()
+
+    # For every time stamp have 3x images, 2x point clouds,
+    # 1x cone positions, 1x car position
+    data_folder_paths = get_data_folder_paths(cfg)
+
     for idx, data_folder_path in enumerate(data_folder_paths):
         print("\nData folder {}: {}/{}".format(
             os.path.basename(data_folder_path), idx + 1,
@@ -46,35 +47,14 @@ def main():
         data_preprocesser_instance = DataPreprocesser(cfg)
         if cfg.match_data:
             data_preprocesser_instance.match_data_step_1()
-
             data_preprocesser_instance.match_data_step_2(
                 cfg.motion_compensation)
 
         if cfg.icp_rots:
             data_preprocesser_instance.extract_rotations()
 
-    ##### DEBUG #####
-
-    # Dump data_preprocessor
-    # with open('./data_preprocessor_instance.pkl',
-    #           'wb') as output_pkl:
-    #     pickle.dump(data_preprocesser_instance,
-    #                 output_pkl,
-    #                 protocol=pickle.HIGHEST_PROTOCOL)
-
-    # THIS COMMENTED CODE DOESN'T WORK BUT THE LINES BELOW DO ?!?!
-    # Load data_preprocessor
-    # with open(
-    #         '/home/benjin/Development/git/sensor_fusion_2020/preprocessing/preprocessing/data_preprocessor_instance.pkl',
-    #         'rb') as input_pkl:
-    #     data_preprocessor_instance = pickle.load(input_pkl)
-
-    # data_preprocesser_instance = pickle.load(
-    #     open(
-    #         '/home/benjin/Development/git/sensor_fusion_2020/preprocessing/preprocessing/data_preprocessor_instance.pkl',
-    #         'rb'))
-
-    # data_preprocesser_instance.match_point_clouds()
+        if cfg.generate_dm:
+            data_preprocesser_instance.generate_dm()
 
 
 if __name__ == "__main__":
