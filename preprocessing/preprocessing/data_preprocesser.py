@@ -728,20 +728,19 @@ class DataPreprocesser:
                     rel_rot[5],
                 ) for rel_rot in relative_rotations)
 
-    def generate_dm(self):
+    def generate_dim(self):
         """
-        Generates the DM layers given the current data folder
+        Generates the DIM layers given the current data folder
         """
         def concatenate_pcs(pc_files):
             """
             Reads the point clouds provided by a numpy array of point
             cloud file paths
             """
-            pc = np.zeros((0, 3))
+            pc = np.zeros((0, 6))
 
             for pc_file in pc_files.tolist():
-                curr_pc = np.fromfile(pc_file,
-                                      dtype=np.float64).reshape(-1, 6)[:, :3]
+                curr_pc = np.fromfile(pc_file, dtype=np.float64).reshape(-1, 6)
                 pc = np.vstack((pc, curr_pc))
 
             return pc
@@ -760,16 +759,53 @@ class DataPreprocesser:
 
         def project(points, image, R, t, K, debug=False):
             '''
-            Project points onto the image and generate the DM layers
+            Project points onto the image and generate the DI and M layers
             '''
-            depth_layer = np.zeros(image.shape[:-1], dtype=np.float32)
+
+            intensities = points[:, 3]
+            points = points[:, :3]
 
             pixels, pixel_filter = project_points_to_pixels(
                 points, R, t, K, image.shape)
 
-            # Filter points and pixels
+            # Filter points, pixels and intensities
+            indices_to_delete = []
+
             points = points[pixel_filter]
-            pixels = pixels[pixel_filter]
+            pixels = np.int32(pixels[pixel_filter])
+            intensities = intensities[pixel_filter]
+            depth = np.sqrt(np.sum(np.power(points, 2), axis=1))
+
+            # Take care of duplicate pixels
+            # Keep the pixels corresponding to the min depth
+            vals, inverse, count = np.unique(pixels,
+                                             return_inverse=True,
+                                             return_counts=True,
+                                             axis=0)
+
+            idx_vals_repeated = np.nonzero(count > 1)[0]
+            vals_repeated = vals[idx_vals_repeated]
+
+            rows, cols = np.nonzero(inverse == idx_vals_repeated[:,
+                                                                 np.newaxis])
+            _, inverse_rows = np.unique(rows, return_index=True)
+            duplicate_indices_list = np.split(cols, inverse_rows[1:])
+
+            for duplicate_indices in duplicate_indices_list:
+                idx_to_keep = np.argmin(depth[duplicate_indices])
+                mask = np.ones(duplicate_indices.shape, dtype=np.bool)
+                mask[idx_to_keep] = False
+                indices_to_delete.extend(duplicate_indices[mask].tolist())
+
+            mask = np.ones(points.shape[0], dtype=np.bool)
+            mask[indices_to_delete] = False
+            pixels = pixels[mask]
+            points = points[mask]
+            intensities = intensities[mask]
+            depth = depth[mask]
+
+            depth_layer = np.zeros(image.shape[:-1], dtype=np.float16)
+            intensity_layer = np.zeros(image.shape[:-1], dtype=np.float16)
 
             if debug:
                 hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
@@ -781,24 +817,19 @@ class DataPreprocesser:
                         hsv_image,
                         (np.int32(pixels[i, 0]), np.int32(pixels[i, 1])), 2,
                         (int(color[i]), 255, 255), -1)
-                new_depth = np.sqrt(np.sum(np.power(points[i, :], 2)))
-                curr_depth = depth_layer[np.int32(pixels[i, 1]),
-                                         np.int32(pixels[i, 0])]
-                if new_depth > curr_depth:
-                    depth_layer[np.int32(pixels[i, 1]),
-                                np.int32(pixels[i, 0])] = new_depth
 
-            depth_layer = np.expand_dims(depth_layer, 2)
-            mask_layer = (depth_layer > 0).astype(np.float32)
+                depth_layer[pixels[i, 1], pixels[i, 0]] = depth[i]
+
+                intensity_layer[pixels[i, 1], pixels[i, 0]] = intensities[i]
+
+            mask_layer = (depth_layer > 0).astype(np.bool)
             if debug:
                 projection = cv2.cvtColor(hsv_image, cv2.COLOR_HSV2BGR)
-                cv2.imshow('depth_mask', projection)
+                cv2.imshow('depth', projection)
                 cv2.waitKey(0)
                 cv2.destroyAllWindows()
 
-            dm = np.concatenate((depth_layer, mask_layer), axis=-1)
-
-            return dm
+            return depth_layer, mask_layer, intensity_layer
 
         cameras = ["forward", "left", "right"]
         lidars = ["fw", "mrh"]
@@ -815,17 +846,28 @@ class DataPreprocesser:
 
         for camera in cameras:
 
-            dst_dm_folder_path = os.path.join(self.data_folder_path,
-                                              "{}_dm".format(camera))
-            if os.path.exists(dst_dm_folder_path):
+            dst_di_folder_path = os.path.join(self.data_folder_path,
+                                              "{}_di".format(camera))
+            dst_m_folder_path = os.path.join(self.data_folder_path,
+                                             "{}_m".format(camera))
+            if os.path.exists(dst_di_folder_path):
                 print(
-                    "The folder {}_dm exist already indicating that the data has already been extracted!"
+                    "The folder {}_di exists already indicating that the data has already been extracted!"
                     .format(camera))
                 print(
-                    "{}_dm will be removed and the data will be reextracted.".
+                    "{}_di will be removed and the data will be reextracted.".
                     format(camera))
-                shutil.rmtree(dst_dm_folder_path)
-            os.makedirs(dst_dm_folder_path)
+                shutil.rmtree(dst_di_folder_path)
+            os.makedirs(dst_di_folder_path)
+
+            if os.path.exists(dst_m_folder_path):
+                print(
+                    "The folder {}_m exist already indicating that the data has already been extracted!"
+                    .format(camera))
+                print("{}_m will be removed and the data will be reextracted.".
+                      format(camera))
+                shutil.rmtree(dst_m_folder_path)
+            os.makedirs(dst_m_folder_path)
 
             K = K_dict[camera]
             T_mrh_cam = T_mrh_cam_dict[camera]
@@ -836,18 +878,25 @@ class DataPreprocesser:
             ])
 
             pbar = tqdm(total=len(img_files),
-                        desc="DM of {}_camera".format(camera))
+                        desc="DMI of {}_camera".format(camera))
 
             for idx, img_file in enumerate(img_files):
 
-                pc = concatenate_pcs(pc_files[:, idx])
+                pc = concatenate_pcs(pc_files[:, idx])[:, :4]
                 img = cv2.imread(img_file)
 
-                dm = project(pc, img, T_mrh_cam[:3, :3], T_mrh_cam[:3, 3], K)
+                d, m, i = project(pc, img, T_mrh_cam[:3, :3], T_mrh_cam[:3, 3],
+                                  K)
 
-                dm.tofile(
-                    os.path.join(dst_dm_folder_path,
+                di = np.stack((d, i), axis=2)
+
+                di.tofile(
+                    os.path.join(dst_di_folder_path,
                                  str(idx).zfill(8) + ".bin"))
+                m.tofile(
+                    os.path.join(dst_m_folder_path,
+                                 str(idx).zfill(8) + ".bin"))
+
                 pbar.update(1)
 
             pbar.close()
