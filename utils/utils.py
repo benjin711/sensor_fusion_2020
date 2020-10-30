@@ -23,6 +23,31 @@ from tqdm import tqdm
 
 from . import torch_utils  #  torch_utils, google_utils
 
+
+class BerHu(nn.Module):
+    def __init__(self, threshold=0.2):
+        super(BerHu, self).__init__()
+        self.threshold = threshold
+
+    def forward(self, real, fake):
+        mask = real > 0
+        if not fake.shape == real.shape:
+            _, _, H, W = real.shape
+            fake = F.upsample(fake, size=(H, W), mode='bilinear')
+        fake = fake * mask
+        diff = torch.abs(real - fake)
+        delta = self.threshold * torch.max(diff).data.cpu().numpy()
+
+        part1 = -F.threshold(-diff, -delta, 0.)
+        part2 = F.threshold(diff ** 2 - delta ** 2, 0.,
+                            -delta ** 2.) + delta ** 2
+        part2 = part2 / (2. * delta)
+
+        loss = part1 + part2
+        loss = torch.sum(loss)
+        return loss
+
+
 # Set printoptions
 torch.set_printoptions(linewidth=320, precision=5, profile='long')
 np.set_printoptions(linewidth=320, formatter={'float_kind': '{:11.5g}'.format})  # format short g, %precision=5
@@ -78,7 +103,7 @@ def check_anchors(dataset, model, thr=4.0, imgsz=640):
     m = model.module.model[-1] if hasattr(model, 'module') else model.model[-1]  # Detect()
     shapes = imgsz * dataset.shapes / dataset.shapes.max(1, keepdims=True)
     scale = np.random.uniform(0.9, 1.1, size=(shapes.shape[0], 1))  # augment scale
-    wh = torch.tensor(np.concatenate([l[:, 3:5] * s for s, l in zip(shapes * scale, dataset.labels)])).float()  # wh
+    wh = torch.tensor(np.concatenate([l[:, 4:6] * s for s, l in zip(shapes * scale, dataset.labels)])).float()  # wh
 
     def metric(k):  # compute metric
         r = wh[:, None] / k[None]
@@ -440,14 +465,16 @@ class BCEBlurWithLogitsLoss(nn.Module):
 def compute_loss(p, targets, model):  # predictions, targets, model
     device = targets.device
     ft = torch.cuda.FloatTensor if p[0].is_cuda else torch.Tensor
-    lcls, lbox, lobj = ft([0]).to(device), ft([0]).to(device), ft([0]).to(device)
-    tcls, tbox, indices, anchors = build_targets(p, targets, model)  # targets
+    lcls, ldepth, lbox, lobj = ft([0]).to(device), ft([0]).to(device), \
+                               ft([0]).to(device), ft([0]).to(device)
+    tcls, tdepth, tbox, indices, anchors = build_targets(p, targets, model)  # targets
     h = model.hyp  # hyperparameters
     red = 'mean'  # Loss reduction (sum or mean)
 
     # Define criteria
     BCEcls = nn.BCEWithLogitsLoss(pos_weight=ft([h['cls_pw']]), reduction=red).to(device)
     BCEobj = nn.BCEWithLogitsLoss(pos_weight=ft([h['obj_pw']]), reduction=red).to(device)
+    BHdepth = BerHu().to(device)
 
     # class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
     cp, cn = smooth_BCE(eps=0.0)
@@ -464,12 +491,14 @@ def compute_loss(p, targets, model):  # predictions, targets, model
     for i, pi in enumerate(p):  # layer index, layer predictions
         b, a, gj, gi = indices[i]  # image, anchor, gridy, gridx
         tobj = torch.zeros_like(pi[..., 0]).to(device)  # target obj
+        # tobj indicates whether each anchor prediction corresponds to a gt box
 
         nb = b.shape[0]  # number of targets
         if nb:
             nt += nb  # cumulative targets
             ps = pi[b, a, gj, gi]  # prediction subset corresponding to targets
 
+            # Using [xywh, depth, obj_prob, class_1_prob, class_2_prob, ... class_nc_prob]
             # GIoU
             pxy = ps[:, :2].sigmoid() * 2. - 0.5
             pwh = (ps[:, 2:4].sigmoid() * 2) ** 2 * anchors[i]
@@ -480,22 +509,27 @@ def compute_loss(p, targets, model):  # predictions, targets, model
             # Obj
             tobj[b, a, gj, gi] = (1.0 - model.gr) + model.gr * giou.detach().clamp(0).type(tobj.dtype)  # giou ratio
 
+            # Depth
+            pdepth = ps[:, 4]
+
             # Class
             if model.nc > 1:  # cls loss (only if multiple classes)
-                t = torch.full_like(ps[:, 5:], cn).to(device)  # targets
+                t = torch.full_like(ps[:, 6:], cn).to(device)  # targets
                 t[range(nb), tcls[i]] = cp
-                lcls += BCEcls(ps[:, 5:], t)  # BCE
+                lcls += BCEcls(ps[:, 6:], t)  # BCE
 
             # Append targets to text file
             # with open('targets.txt', 'a') as file:
             #     [file.write('%11.5g ' * 4 % tuple(x) + '\n') for x in torch.cat((txy[i], twh[i]), 1)]
 
-        lobj += BCEobj(pi[..., 4], tobj) * balance[i]  # obj loss
+        ldepth += BHdepth.forward(tdepth[i], pdepth)
+        lobj += BCEobj(pi[..., 5], tobj) * balance[i]  # obj loss
 
     s = 3 / np  # output count scaling
     lbox *= h['giou'] * s
     lobj *= h['obj'] * s * (1.4 if np == 4 else 1.)
     lcls *= h['cls'] * s
+    ldepth *= h['depth'] * s
     bs = tobj.shape[0]  # batch size
     if red == 'sum':
         g = 3.0  # loss gain
@@ -504,8 +538,8 @@ def compute_loss(p, targets, model):  # predictions, targets, model
             lcls *= g / nt / model.nc
             lbox *= g / nt
 
-    loss = lbox + lobj + lcls
-    return loss * bs, torch.cat((lbox, lobj, lcls, loss)).detach()
+    loss = lbox + lobj + lcls + ldepth
+    return loss * bs, torch.cat((lbox, lobj, lcls, ldepth, loss)).detach()
 
 
 def build_targets(p, targets, model):
@@ -514,7 +548,7 @@ def build_targets(p, targets, model):
     det = model.module.model[-1] if type(model) in (nn.parallel.DataParallel, nn.parallel.DistributedDataParallel) \
         else model.model[-1]  # Detect() module
     na, nt = det.na, targets.shape[0]  # number of anchors, targets
-    tcls, tbox, indices, anch = [], [], [], []
+    tcls, tdepth, tbox, indices, anch = [], [], [], [], []
     gain = torch.ones(7, device=targets.device)  # normalized to gridspace gain
     off = torch.tensor([[1, 0], [0, 1], [-1, 0], [0, -1]], device=targets.device).float()  # overlap offsets
     at = torch.arange(na).view(na, 1).repeat(1, nt)  # anchor tensor, same as .repeat_interleave(nt)
@@ -528,13 +562,13 @@ def build_targets(p, targets, model):
         # Match targets to anchors
         a, t, offsets = [], targets * gain, 0
         if nt:
-            r = t[None, :, 4:6] / anchors[:, None]  # wh ratio
+            r = t[None, :, 5:7] / anchors[:, None]  # wh ratio
             j = torch.max(r, 1. / r).max(2)[0] < model.hyp['anchor_t']  # compare
             # j = wh_iou(anchors, t[:, 4:6]) > model.hyp['iou_t']  # iou(3,n) = wh_iou(anchors(3,2), gwh(n,2))
             a, t = at[j], t.repeat(na, 1, 1)[j]  # filter
 
             # overlaps
-            gxy = t[:, 2:4]  # grid xy
+            gxy = t[:, 3:5]  # grid xy
             z = torch.zeros_like(gxy)
             if style == 'rect2':
                 j, k = ((gxy % 1. < g) & (gxy > 1.)).T
@@ -548,8 +582,9 @@ def build_targets(p, targets, model):
 
         # Define
         b, c = t[:, :2].long().T  # image, class
-        gxy = t[:, 2:4]  # grid xy
-        gwh = t[:, 4:6]  # grid wh
+        depth = t[:, 2].T
+        gxy = t[:, 3:5]  # grid xy
+        gwh = t[:, 5:7]  # grid wh
         gij = (gxy - offsets).long()
         gi, gj = gij.T  # grid xy indices
 
@@ -558,8 +593,9 @@ def build_targets(p, targets, model):
         tbox.append(torch.cat((gxy - gij, gwh), 1))  # box
         anch.append(anchors[a])  # anchors
         tcls.append(c)  # class
+        tdepth.append(depth)
 
-    return tcls, tbox, indices, anch
+    return tcls, tdepth, tbox, indices, anch
 
 
 def non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, merge=False, classes=None, agnostic=False):
@@ -785,7 +821,7 @@ def kmean_anchors(path='./data/coco128.yaml', n=9, img_size=640, thr=4.0, gen=10
 
     # Get label wh
     shapes = img_size * dataset.shapes / dataset.shapes.max(1, keepdims=True)
-    wh0 = np.concatenate([l[:, 3:5] * s for s, l in zip(shapes, dataset.labels)])  # wh
+    wh0 = np.concatenate([l[:, 4:6] * s for s, l in zip(shapes, dataset.labels)])  # wh
 
     # Filter
     i = (wh0 < 3.0).any(1).sum()
