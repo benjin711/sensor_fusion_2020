@@ -769,40 +769,10 @@ class DataPreprocesser:
                 points, R, t, K, image.shape)
 
             # Filter points, pixels and intensities
-            indices_to_delete = []
-
             points = points[pixel_filter]
             pixels = np.int32(pixels[pixel_filter])
             intensities = intensities[pixel_filter]
             depth = np.sqrt(np.sum(np.power(points, 2), axis=1))
-
-            # Take care of duplicate pixels
-            # Keep the pixels corresponding to the min depth
-            vals, inverse, count = np.unique(pixels,
-                                             return_inverse=True,
-                                             return_counts=True,
-                                             axis=0)
-
-            idx_vals_repeated = np.nonzero(count > 1)[0]
-            vals_repeated = vals[idx_vals_repeated]
-
-            rows, cols = np.nonzero(inverse == idx_vals_repeated[:,
-                                                                 np.newaxis])
-            _, inverse_rows = np.unique(rows, return_index=True)
-            duplicate_indices_list = np.split(cols, inverse_rows[1:])
-
-            for duplicate_indices in duplicate_indices_list:
-                idx_to_keep = np.argmin(depth[duplicate_indices])
-                mask = np.ones(duplicate_indices.shape, dtype=np.bool)
-                mask[idx_to_keep] = False
-                indices_to_delete.extend(duplicate_indices[mask].tolist())
-
-            mask = np.ones(points.shape[0], dtype=np.bool)
-            mask[indices_to_delete] = False
-            pixels = pixels[mask]
-            points = points[mask]
-            intensities = intensities[mask]
-            depth = depth[mask]
 
             depth_layer = np.zeros(image.shape[:-1], dtype=np.float16)
             intensity_layer = np.zeros(image.shape[:-1], dtype=np.float16)
@@ -818,11 +788,13 @@ class DataPreprocesser:
                         (np.int32(pixels[i, 0]), np.int32(pixels[i, 1])), 2,
                         (int(color[i]), 255, 255), -1)
 
-                depth_layer[pixels[i, 1], pixels[i, 0]] = depth[i]
-
-                intensity_layer[pixels[i, 1], pixels[i, 0]] = intensities[i]
+                if depth[i] > depth_layer[pixels[i, 1], pixels[i, 0]]:
+                    depth_layer[pixels[i, 1], pixels[i, 0]] = depth[i]
+                    intensity_layer[pixels[i, 1], pixels[i,
+                                                         0]] = intensities[i]
 
             mask_layer = (depth_layer > 0).astype(np.bool)
+
             if debug:
                 projection = cv2.cvtColor(hsv_image, cv2.COLOR_HSV2BGR)
                 cv2.imshow('depth', projection)
