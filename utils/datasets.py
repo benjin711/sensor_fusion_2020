@@ -488,11 +488,11 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                     p_di = Path(self.di_files[i])
                     p_m = Path(self.m_files[i])
                     di = np.fromfile(p_di,
-                        dtype=np.float64).reshape(img.shape[0],
+                        dtype=np.float16).reshape(img.shape[0],
                                                   img.shape[1],
                                                   2)
                     m = np.fromfile(p_m,
-                        dtype=np.float64).reshape(img.shape[0],
+                        dtype=np.float16).reshape(img.shape[0],
                                                   img.shape[1],
                                                   1)
                     img = np.concatenate((img, di[:, :, 0], m), axis=-1)
@@ -716,11 +716,11 @@ def load_image(self, index):
         p_di = self.di_files[index]
         p_m = Path(self.m_files[index])
         di = np.fromfile(p_di,
-                         dtype=np.float64).reshape(img.shape[0],
+                         dtype=np.float16).reshape(img.shape[0],
                                                    img.shape[1],
                                                    2)
         m = np.fromfile(p_m,
-                        dtype=np.float64).reshape(img.shape[0],
+                        dtype=np.float16).reshape(img.shape[0],
                                                   img.shape[1],
                                                   1)
         img = np.concatenate((img, di[:, :, 0], m), axis=-1)
