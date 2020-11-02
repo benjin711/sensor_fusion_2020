@@ -495,7 +495,11 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                                     dtype=np.bool).reshape(img.shape[0],
                                                            img.shape[1],
                                                            1)
-                    img = np.concatenate((img, di[:, :, 0], m), axis=-1)
+                    img = np.concatenate(
+                        (
+                        img, di[:, :, 0].reshape(img.shape[0], img.shape[1], 1),
+                        m),
+                        axis=-1)
                     h, w = img.shape[:2]
                     for j, x in enumerate(l):
                         f = '%s%sclassifier%s%g_%g_%s' % (
@@ -723,7 +727,9 @@ def load_image(self, index):
                         dtype=np.bool).reshape(img.shape[0],
                                                img.shape[1],
                                                1)
-        img = np.concatenate((img, di[:, :, 0], m), axis=-1)
+        img = np.concatenate(
+            (img, di[:, :, 0].reshape(img.shape[0], img.shape[1], 1), m),
+            axis=-1)
 
         assert img is not None, 'Image Not Found ' + p
         h0, w0 = img.shape[:2]  # orig hw
