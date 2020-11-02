@@ -8,8 +8,9 @@
 #download: https://github.com/ultralytics/yolov5/releases/download/v1.0/coco128.zip
 
 # train and val datasets (image directory or *.txt file with image paths)
-train: ../TinyTestDataset/Inputs/img/
-val: ../TinyTestDataset/Inputs/img/
+train: /cluster/scratch/cafang/sensor_fusion_data
+val: /cluster/scratch/cafang/sensor_fusion_data
+
 
 # number of classes
 nc: 2
