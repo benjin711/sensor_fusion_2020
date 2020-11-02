@@ -344,25 +344,35 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                  stride=32,
                  pad=0.0):
         try:
-            f = []  # image files
-            for p in path if isinstance(path, list) else [path]:
-                p = str(Path(p))  # os-agnostic
-                parent = str(Path(p).parent) + os.sep
-                if os.path.isfile(p):  # file
-                    with open(p, 'r') as t:
-                        t = t.read().splitlines()
-                        f += [
-                            x.replace('./', parent)
-                            if x.startswith('./') else x for x in t
-                        ]  # local to global path
-                elif os.path.isdir(p):  # folder
-                    f += glob.iglob(p + os.sep + '*.*')
-                else:
-                    raise Exception('%s does not exist' % p)
-            self.img_files = sorted([
-                x.replace('/', os.sep) for x in f
-                if os.path.splitext(x)[-1].lower() in img_formats
-            ])
+            """Fetch the label paths from the top-level directory given"""
+            self.label_files = sorted(
+                glob.glob(os.path.join(path, '*', 'data', '*', '*_labels', '*.txt')))
+            self.img_files = [
+                x.replace('labels', 'camera_filtered').replace('.txt', '.png')
+                for x in self.label_files]
+            self.dm_files = [
+                x.replace('labels', 'di').replace('.txt', '.bin')
+                for x in self.label_files
+            ]
+            # f = [] # image files
+            # for p in path if isinstance(path, list) else [path]:
+            #     p = str(Path(p))  # os-agnostic
+            #     parent = str(Path(p).parent) + os.sep
+            #     if os.path.isfile(p):  # file
+            #         with open(p, 'r') as t:
+            #             t = t.read().splitlines()
+            #             f += [
+            #                 x.replace('./', parent)
+            #                 if x.startswith('./') else x for x in t
+            #             ]  # local to global path
+            #     elif os.path.isdir(p):  # folder
+            #         f += glob.iglob(p + os.sep + '*.*')
+            #     else:
+            #         raise Exception('%s does not exist' % p)
+            # self.img_files = sorted([
+            #     x.replace('/', os.sep) for x in f
+            #     if os.path.splitext(x)[-1].lower() in img_formats
+            # ])
         except Exception as e:
             raise Exception('Error loading data from %s: %s\nSee %s' %
                             (path, e, help_url))
@@ -384,15 +394,15 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         self.stride = stride
 
         # Define labels
-        self.label_files = [
-            x.replace('Inputs', 'Labels').replace('/img', '').replace(
-                os.path.splitext(x)[-1], '.txt')
-            for x in self.img_files
-        ]
-        self.dm_files = [
-            x.replace('img', 'dm').replace(os.path.splitext(x)[-1], '.bin')
-            for x in self.img_files
-        ]
+        # self.label_files = [
+        #     x.replace('Inputs', 'Labels').replace('/img', '').replace(
+        #         os.path.splitext(x)[-1], '.txt')
+        #     for x in self.img_files
+        # ]
+        # self.dm_files = [
+        #     x.replace('img', 'dm').replace(os.path.splitext(x)[-1], '.bin')
+        #     for x in self.img_files
+        # ]
         # Check cache
         cache_path = str(Path(
             self.label_files[0]).parent) + '.cache'  # cached labels
