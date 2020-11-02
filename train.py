@@ -434,8 +434,8 @@ if __name__ == '__main__':
     if last and not opt.weights:
         print(f'Resuming training from {last}')
     opt.weights = last if opt.resume and not opt.weights else opt.weights
-    if opt.local_rank in [-1, 0]:
-        check_git_status()
+    # if opt.local_rank in [-1, 0]:
+    #     check_git_status()
     opt.cfg = check_file(opt.cfg)  # check file
     opt.data = check_file(opt.data)  # check file
     if opt.hyp:  # update hyps
