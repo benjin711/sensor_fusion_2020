@@ -481,8 +481,8 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                 if extract_bounding_boxes:
                     p = Path(self.img_files[i])
                     img = cv2.imread(str(p))
-                    bm = np.fromfile(path.replace('img', 'dm').replace(
-                        os.path.splitext(str(p))[-1], '.bin'),
+                    p_bm = Path(self.dm_files[i])
+                    bm = np.fromfile(p_bm,
                         dtype=np.float64).reshape(img.shape[0],
                                                   img.shape[1],
                                                   2)
