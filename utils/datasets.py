@@ -350,8 +350,12 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             self.img_files = [
                 x.replace('labels', 'camera_filtered').replace('.txt', '.png')
                 for x in self.label_files]
-            self.dm_files = [
+            self.di_files = [
                 x.replace('labels', 'di').replace('.txt', '.bin')
+                for x in self.label_files
+            ]
+            self.m_files = [
+                x.replace('labels', 'm').replace('.txt', '.bin')
                 for x in self.label_files
             ]
             # f = [] # image files
@@ -481,12 +485,17 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                 if extract_bounding_boxes:
                     p = Path(self.img_files[i])
                     img = cv2.imread(str(p))
-                    p_bm = Path(self.dm_files[i])
-                    bm = np.fromfile(p_bm,
+                    p_di = Path(self.di_files[i])
+                    p_m = Path(self.m_files[i])
+                    di = np.fromfile(p_di,
                         dtype=np.float64).reshape(img.shape[0],
                                                   img.shape[1],
                                                   2)
-                    img = np.concatenate((img, bm), axis=-1)
+                    m = np.fromfile(p_m,
+                        dtype=np.float64).reshape(img.shape[0],
+                                                  img.shape[1],
+                                                  1)
+                    img = np.concatenate((img, di[:, :, 0], m), axis=-1)
                     h, w = img.shape[:2]
                     for j, x in enumerate(l):
                         f = '%s%sclassifier%s%g_%g_%s' % (
@@ -702,15 +711,21 @@ def load_image(self, index):
     # loads 1 image from dataset, returns img, original hw, resized hw
     img = self.imgs[index]
     if img is None:  # not cached
-        path = self.img_files[index]
-        img = cv2.imread(path)  # BGR
-        path_bm = self.dm_files[index]
-        bm = np.fromfile(path_bm,
-            dtype=np.float64).reshape(img.shape[0],
-                                      img.shape[1],
-                                      2)
-        img = np.concatenate((img, bm), axis=-1)
-        assert img is not None, 'Image Not Found ' + path
+        p = self.img_files[index]
+        img = cv2.imread(str(p))
+        p_di = self.di_files[index]
+        p_m = Path(self.m_files[index])
+        di = np.fromfile(p_di,
+                         dtype=np.float64).reshape(img.shape[0],
+                                                   img.shape[1],
+                                                   2)
+        m = np.fromfile(p_m,
+                        dtype=np.float64).reshape(img.shape[0],
+                                                  img.shape[1],
+                                                  1)
+        img = np.concatenate((img, di[:, :, 0], m), axis=-1)
+
+        assert img is not None, 'Image Not Found ' + p
         h0, w0 = img.shape[:2]  # orig hw
         r = self.img_size / max(h0, w0)  # resize image to img_size
         if r != 1:  # always resize down, only resize up if training with augmentation
