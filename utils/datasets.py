@@ -704,8 +704,8 @@ def load_image(self, index):
     if img is None:  # not cached
         path = self.img_files[index]
         img = cv2.imread(path)  # BGR
-        bm = np.fromfile(path.replace('img', 'dm').replace(
-            os.path.splitext(path)[-1], '.bin'),
+        path_bm = self.dm_files[index]
+        bm = np.fromfile(path_bm,
             dtype=np.float64).reshape(img.shape[0],
                                       img.shape[1],
                                       2)
