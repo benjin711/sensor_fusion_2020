@@ -492,9 +492,9 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                                                   img.shape[1],
                                                   2)
                     m = np.fromfile(p_m,
-                        dtype=np.float16).reshape(img.shape[0],
-                                                  img.shape[1],
-                                                  1)
+                                    dtype=np.bool).reshape(img.shape[0],
+                                                           img.shape[1],
+                                                           1)
                     img = np.concatenate((img, di[:, :, 0], m), axis=-1)
                     h, w = img.shape[:2]
                     for j, x in enumerate(l):
@@ -720,9 +720,9 @@ def load_image(self, index):
                                                    img.shape[1],
                                                    2)
         m = np.fromfile(p_m,
-                        dtype=np.float16).reshape(img.shape[0],
-                                                  img.shape[1],
-                                                  1)
+                        dtype=np.bool).reshape(img.shape[0],
+                                               img.shape[1],
+                                               1)
         img = np.concatenate((img, di[:, :, 0], m), axis=-1)
 
         assert img is not None, 'Image Not Found ' + p
