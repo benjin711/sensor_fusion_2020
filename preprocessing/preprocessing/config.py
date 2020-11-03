@@ -60,10 +60,10 @@ def command_line_parser():
                         default=True,
                         help='Motion compensate point clouds')
 
-    parser.add_argument('--generate_dm',
-                        dest='generate_dm',
+    parser.add_argument('--generate_dim',
+                        dest='generate_dim',
                         action='store_true',
-                        help='Generate DM images')
+                        help='Generate DIM layers')
 
     parser.add_argument(
         '-i',

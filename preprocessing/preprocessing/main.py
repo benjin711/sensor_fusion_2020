@@ -53,8 +53,8 @@ def main():
         if cfg.icp_rots:
             data_preprocesser_instance.extract_rotations()
 
-        if cfg.generate_dm:
-            data_preprocesser_instance.generate_dm()
+        if cfg.generate_dim:
+            data_preprocesser_instance.generate_dim()
 
 
 if __name__ == "__main__":
