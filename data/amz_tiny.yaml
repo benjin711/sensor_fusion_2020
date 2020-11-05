@@ -9,7 +9,8 @@
 
 # train and val datasets (image directory or *.txt file with image paths)
 train: /cluster/scratch/cafang/sensor_fusion_data
-val: /cluster/scratch/cafang/sensor_fusion_data
+val: /cluster/scratch/cafang/sensor_fusion_data_val
+
 
 
 # number of classes
