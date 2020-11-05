@@ -32,8 +32,8 @@ class BerHu(nn.Module):
 
     def forward(self, real, fake):
         mask = real > 0
-        if not fake.shape == real.shape:
-            _, _, H, W = real.shape
+        if not fake.size() == real.size():
+            _, _, H, W = real.size()
             fake = F.upsample(fake, size=(H, W), mode='bilinear')
         fake = fake * mask
         diff = torch.abs(real - fake)
