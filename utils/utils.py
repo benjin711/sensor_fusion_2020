@@ -32,10 +32,6 @@ class BerHu(nn.Module):
 
     def forward(self, real, fake):
         mask = real > 0
-
-        if not fake.size() == real.size():
-            return torch.zeros(1).cuda()
-
         fake = fake * mask
         diff = torch.abs(real - fake)
         delta = self.threshold * torch.max(diff).data.cpu().numpy()
@@ -560,7 +556,7 @@ def build_targets(p, targets, model):
     for i in range(det.nl):
         anchors = det.anchors[i]
         gain[3:] = torch.tensor(p[i].shape)[[3, 2, 3, 2]]  # xyxy gain
-        gi_max, gj_max = gain[2:4].long()
+        gi_max, gj_max = gain[3:5].long()
 
         # Match targets to anchors
         a, t, offsets = [], targets * gain, 0
