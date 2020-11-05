@@ -32,6 +32,8 @@ class BerHu(nn.Module):
 
     def forward(self, real, fake):
         mask = real > 0
+        if mask.size() != fake.size():
+            return torch.zeros(1).cuda()
         fake = fake * mask
         diff = torch.abs(real - fake)
         delta = self.threshold * torch.max(diff).data.cpu().numpy()
