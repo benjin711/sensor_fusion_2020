@@ -5,7 +5,6 @@ from tqdm import tqdm
 
 import numpy as np
 
-base_dir = '/media/carter/Samsung_T5/sensor_fusion_data_tmp_2'
 def main(cfg):
     base_dir = cfg.base_dir
     start_idx = cfg.start_idx
