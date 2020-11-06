@@ -15,15 +15,12 @@ def main(cfg):
         if i < start_idx:
             continue
 
-        data = np.genfromtxt(p) # cls, depth, xywh
-        if len(data) == 0:
-            os.remove(p)
-        else:
-            data_xy = data[:, [2, 3]]
-            data_wh = data[:, [4, 5]]
-            new_data_xy = data_xy + data_wh/2
-            data[:, [2, 3]] = new_data_xy
-            np.savetxt(p, data)
+        data = np.genfromtxt(p).reshape((-1, 6)) # cls, depth, xywh
+        data_xy = data[:, [2, 3]]
+        data_wh = data[:, [4, 5]]
+        new_data_xy = data_xy + data_wh/2
+        data[:, [2, 3]] = new_data_xy
+        np.savetxt(p, data)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fix incorrect XYWH labels "
