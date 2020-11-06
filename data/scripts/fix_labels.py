@@ -1,6 +1,7 @@
 import glob
 import os
 import argparse
+from tqdm import tqdm
 
 import numpy as np
 
@@ -9,7 +10,7 @@ def main(cfg):
     base_dir = cfg.base_dir
     paths = glob.glob(os.path.join(base_dir, '*', 'data', '*', '*_labels', '*.txt'))
 
-    for p in paths:
+    for p in tqdm(paths):
         data = np.genfromtxt(p) # cls, depth, xywh
         data_xy = data[:, [2, 3]]
         data_wh = data[:, [4, 5]]
