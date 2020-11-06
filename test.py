@@ -73,7 +73,7 @@ def test(data,
     s = ('%20s' + '%12s' * 6) % ('Class', 'Images', 'Targets', 'P', 'R', 'mAP@.5', 'mAP@.5:.95')
     p, r, f1, mp, mr, map50, map, t0, t1 = 0., 0., 0., 0., 0., 0., 0., 0., 0.
     loss = torch.zeros(4, device=device)
-    jdict, stats, ap, ap_class = [], [], [], []
+    jdict, stats, depth_stats, ap, ap_class = [], [], [], [], []
     for batch_i, (img, targets, paths, shapes) in enumerate(tqdm(dataloader, desc=s)):
         img = img.to(device, non_blocking=True)
         img = img.half() if half else img.float()  # uint8 to fp16/32
@@ -103,6 +103,7 @@ def test(data,
             labels = targets[targets[:, 0] == si, 1:]
             nl = len(labels)
             tcls = labels[:, 0].tolist() if nl else []  # target class
+            tdepth = labels[:, 1].tolist() if nl else [] # target depths
             seen += 1
 
             if pred is None:
@@ -142,14 +143,15 @@ def test(data,
             if nl:
                 detected = []  # target indices
                 tcls_tensor = labels[:, 0]
+                tdepth_tensor = labels[:, 1]
 
                 # target boxes
                 tbox = xywh2xyxy(labels[:, 2:6]) * whwh
 
                 # Per target class
                 for cls in torch.unique(tcls_tensor):
-                    ti = (cls == tcls_tensor).nonzero().view(-1)  # prediction indices
-                    pi = (cls == pred[:, 5]).nonzero().view(-1)  # target indices
+                    ti = (cls == tcls_tensor).nonzero().view(-1)  # target indices
+                    pi = (cls == pred[:, 5]).nonzero().view(-1)  # prediction indices
 
                     # Search for detections
                     if pi.shape[0]:
@@ -167,6 +169,7 @@ def test(data,
 
             # Append statistics (correct, conf, pcls, tcls)
             stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), tcls))
+            # depth_stats.append(pred[:, 6])
 
         # Plot images
         # [xywh, depth, obj_prob, class_1_prob, class_2_prob, ... class_nc_prob]

@@ -182,9 +182,10 @@ def train(hyp, tb_writer, opt, device):
         model = DDP(model, device_ids=[rank], output_device=rank)
 
     # Trainloader
+    num_train_samples = opt.num_train
     dataloader, dataset = create_dataloader(train_path, imgsz, batch_size, gs, opt, hyp=hyp, augment=True,
                                             cache=opt.cache_images, rect=opt.rect, local_rank=rank,
-                                            world_size=opt.world_size)
+                                            world_size=opt.world_size, num_samples=num_train_samples)
     mlc = np.concatenate(dataset.labels, 0)[:, 0].max()  # max label class
     nb = len(dataloader)  # number of batches
     assert mlc < nc, 'Label class %g exceeds nc=%g in %s. Possible class labels are 0-%g' % (mlc, nc, opt.data, nc - 1)
@@ -192,8 +193,10 @@ def train(hyp, tb_writer, opt, device):
     # Testloader
     if rank in [-1, 0]:
         # local_rank is set to -1. Because only the first process is expected to do evaluation.
+        num_val_samples = opt.num_val
         testloader = create_dataloader(test_path, imgsz_test, total_batch_size, gs, opt, hyp=hyp, augment=False,
-                                       cache=opt.cache_images, rect=True, local_rank=-1, world_size=opt.world_size)[0]
+                                       cache=opt.cache_images, rect=True, local_rank=-1, world_size=opt.world_size,
+                                       num_samples=num_val_samples)[0]
 
     # Model parameters
     hyp['cls'] *= nc / 80.  # scale coco-tuned hyp['cls'] to current dataset
@@ -408,6 +411,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--cfg', type=str, default='models/yolov4m-rgbd.yaml', help='model.yaml path')
     parser.add_argument('--data', type=str, default='data/amz_tiny.yaml', help='data.yaml path')
+    parser.add_argument('--num-train', type=int, default=0, help='Number of training samples to take. To take all, use 0')
+    parser.add_argument('--num-val', type=int, default=0, help='Number of val samples to take. To take all, use 0')
     parser.add_argument('--hyp', type=str, default='', help='hyp.yaml path (optional)')
     parser.add_argument('--epochs', type=int, default=300)
     parser.add_argument('--batch-size', type=int, default=16, help="Total batch size for all gpus.")

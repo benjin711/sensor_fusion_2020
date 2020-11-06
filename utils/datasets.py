@@ -57,7 +57,8 @@ def create_dataloader(path,
                       pad=0.0,
                       rect=False,
                       local_rank=-1,
-                      world_size=1):
+                      world_size=1,
+                      num_samples=0):
     # Make sure only the first process in DDP process the dataset first, and the following others can use the cache.
     with torch_distributed_zero_first(local_rank):
         dataset = LoadImagesAndLabels(
@@ -70,7 +71,8 @@ def create_dataloader(path,
             cache_images=cache,
             single_cls=opt.single_cls,
             stride=int(stride),
-            pad=pad)
+            pad=pad,
+            num_samples=num_samples)
 
     batch_size = min(batch_size, len(dataset))
     nw = min(
@@ -335,6 +337,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                  path,
                  img_size=640,
                  batch_size=16,
+                 num_samples=0,
                  augment=False,
                  hyp=None,
                  rect=False,
@@ -347,6 +350,10 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             """Fetch the label paths from the top-level directory given"""
             self.label_files = sorted(
                 glob.glob(os.path.join(path, '*', 'data', '*', '*_labels', '*.txt')))
+            random.shuffle(self.label_files)
+            if num_samples:
+                self.label_files = self.label_files[:num_samples]
+
             self.img_files = [
                 x.replace('labels', 'camera_filtered').replace('.txt', '.png')
                 for x in self.label_files]
