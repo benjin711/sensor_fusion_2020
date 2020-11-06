@@ -72,12 +72,12 @@ def test(data,
     coco91class = coco80_to_coco91_class()
     s = ('%20s' + '%12s' * 6) % ('Class', 'Images', 'Targets', 'P', 'R', 'mAP@.5', 'mAP@.5:.95')
     p, r, f1, mp, mr, map50, map, t0, t1 = 0., 0., 0., 0., 0., 0., 0., 0., 0.
-    loss = torch.zeros(3, device=device)
+    loss = torch.zeros(4, device=device)
     jdict, stats, ap, ap_class = [], [], [], []
     for batch_i, (img, targets, paths, shapes) in enumerate(tqdm(dataloader, desc=s)):
         img = img.to(device, non_blocking=True)
         img = img.half() if half else img.float()  # uint8 to fp16/32
-        img /= 255.0  # 0 - 255 to 0.0 - 1.0
+        img[:, :3, :, :] /= 255.0
         targets = targets.to(device)
         nb, _, height, width = img.shape  # batch size, channels, height, width
         whwh = torch.Tensor([width, height, width, height]).to(device)
@@ -91,7 +91,7 @@ def test(data,
 
             # Compute loss
             if training:  # if model has loss hyperparameters
-                loss += compute_loss([x.float() for x in train_out], targets, model)[1][:3]  # GIoU, obj, cls
+                loss += compute_loss([x.float() for x in train_out], targets, model)[1][:4]  # GIoU, obj, cls, depth
 
             # Run NMS
             t = torch_utils.time_synchronized()
@@ -144,7 +144,7 @@ def test(data,
                 tcls_tensor = labels[:, 0]
 
                 # target boxes
-                tbox = xywh2xyxy(labels[:, 1:5]) * whwh
+                tbox = xywh2xyxy(labels[:, 2:6]) * whwh
 
                 # Per target class
                 for cls in torch.unique(tcls_tensor):
@@ -169,6 +169,7 @@ def test(data,
             stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), tcls))
 
         # Plot images
+        # [xywh, depth, obj_prob, class_1_prob, class_2_prob, ... class_nc_prob]
         if batch_i < 1:
             f = Path(save_dir) / ('test_batch%g_gt.jpg' % batch_i)  # filename
             plot_images(img, targets, paths, str(f), names)  # ground truth

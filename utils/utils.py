@@ -32,8 +32,9 @@ class BerHu(nn.Module):
 
     def forward(self, real, fake):
         mask = real > 0
+        device = mask.device
         if mask.size() != fake.size():
-            return torch.zeros(1).cuda()
+            return torch.zeros(1).to(device)
         fake = fake * mask
         diff = torch.abs(real - fake)
         delta = self.threshold * torch.max(diff).data.cpu().numpy()
@@ -607,13 +608,14 @@ def non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, merge=False, 
     """Performs Non-Maximum Suppression (NMS) on inference results
 
     Returns:
+        [xywh, depth, obj_prob, class_1_prob, class_2_prob, ... class_nc_prob]
          detections with shape: nx6 (x1, y1, x2, y2, conf, cls)
     """
     if prediction.dtype is torch.float16:
         prediction = prediction.float()  # to FP32
 
-    nc = prediction[0].shape[1] - 5  # number of classes
-    xc = prediction[..., 4] > conf_thres  # candidates
+    nc = prediction[0].shape[1] - 6  # number of classes
+    xc = prediction[..., 5] > conf_thres  # candidates
 
     # Settings
     min_wh, max_wh = 2, 4096  # (pixels) minimum and maximum box width and height
@@ -634,17 +636,17 @@ def non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, merge=False, 
             continue
 
         # Compute conf
-        x[:, 5:] *= x[:, 4:5]  # conf = obj_conf * cls_conf
+        x[:, 6:] *= x[:, 5:6]  # conf = obj_conf * cls_conf
 
         # Box (center x, center y, width, height) to (x1, y1, x2, y2)
         box = xywh2xyxy(x[:, :4])
 
         # Detections matrix nx6 (xyxy, conf, cls)
         if multi_label:
-            i, j = (x[:, 5:] > conf_thres).nonzero().t()
-            x = torch.cat((box[i], x[i, j + 5, None], j[:, None].float()), 1)
+            i, j = (x[:, 6:] > conf_thres).nonzero().t()
+            x = torch.cat((box[i], x[i, j + 6, None], j[:, None].float(), x[i, 4, None]), 1)
         else:  # best class only
-            conf, j = x[:, 5:].max(1, keepdim=True)
+            conf, j = x[:, 6:].max(1, keepdim=True)
             x = torch.cat((box, conf, j.float()), 1)[conf.view(-1) > conf_thres]
 
         # Filter by class
@@ -938,6 +940,7 @@ def fitness(x):
 
 
 def output_to_target(output, width, height):
+    # Output format is [xywh, conf, cls, depth]
     # Convert model output to target format [batch_id, class_id, x, y, w, h, conf]
     if isinstance(output, torch.Tensor):
         output = output.cpu().numpy()
@@ -953,8 +956,9 @@ def output_to_target(output, width, height):
                 y = box[1] / height + h / 2
                 conf = pred[4]
                 cls = int(pred[5])
+                depth = pred[6]
 
-                targets.append([i, cls, x, y, w, h, conf])
+                targets.append([i, cls, depth, x, y, w, h, conf])
 
     return np.array(targets)
 

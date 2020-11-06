@@ -317,13 +317,13 @@ def train(hyp, tb_writer, opt, device):
                 '%g/%g' % (epoch, epochs - 1), mem, *mloss, targets.shape[0], imgs.shape[-1])
             pbar.set_description(s)
 
-            # Plot
-            if ni < 3:
-                f = str(Path(log_dir) / ('train_batch%g.jpg' % ni))  # filename
-                result = plot_images(images=imgs, targets=targets, paths=paths, fname=f)
-                if tb_writer and result is not None:
-                    tb_writer.add_image(f, result, dataformats='HWC', global_step=epoch)
-                    # tb_writer.add_graph(model, imgs)  # add model to tensorboard
+            # # Plot
+            # if ni < 3:
+            #     f = str(Path(log_dir) / ('train_batch%g.jpg' % ni))  # filename
+            #     result = plot_images(images=imgs, targets=targets, paths=paths, fname=f)
+            #     if tb_writer and result is not None:
+            #         tb_writer.add_image(f, result, dataformats='HWC', global_step=epoch)
+            #         # tb_writer.add_graph(model, imgs)  # add model to tensorboard
 
             # end batch ------------------------------------------------------------------------------------------------
 
@@ -348,15 +348,16 @@ def train(hyp, tb_writer, opt, device):
 
                 # Write
                 with open(results_file, 'a') as f:
-                    f.write(s + '%10.4g' * 7 % results + '\n')  # P, R, mAP, F1, test_losses=(GIoU, obj, cls)
+                    f.write(s + '%10.4g' * 8 % results + '\n')  # P, R, mAP, F1, test_losses=(GIoU, obj, cls, depth)
                 if len(opt.name) and opt.bucket:
                     os.system('gsutil cp %s gs://%s/results/results%s.txt' % (results_file, opt.bucket, opt.name))
 
+                # torch.cat((lbox, lobj, lcls, ldepth, loss)).detach()
                 # Tensorboard
                 if tb_writer:
-                    tags = ['train/giou_loss', 'train/obj_loss', 'train/cls_loss',
+                    tags = ['train/giou_loss', 'train/obj_loss', 'train/cls_loss', 'train/depth_loss'
                             'metrics/precision', 'metrics/recall', 'metrics/mAP_0.5', 'metrics/mAP_0.5:0.95',
-                            'val/giou_loss', 'val/obj_loss', 'val/cls_loss']
+                            'val/giou_loss', 'val/obj_loss', 'val/cls_loss', 'val/depth_loss']
                     for x, tag in zip(list(mloss[:-1]) + list(results), tags):
                         tb_writer.add_scalar(tag, x, epoch)
 

@@ -19,6 +19,7 @@ class Detect(nn.Module):
         self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv
         self.export = False  # onnx export
 
+    # [xywh, depth, obj_prob, class_1_prob, class_2_prob, ... class_nc_prob]
     def forward(self, x):
         # x = x.copy()  # for profiling
         z = []  # inference output
@@ -32,7 +33,9 @@ class Detect(nn.Module):
                 if self.grid[i].shape[2:4] != x[i].shape[2:4]:
                     self.grid[i] = self._make_grid(nx, ny).to(x[i].device)
 
-                y = x[i].sigmoid()
+                y = x[i]
+                y[..., 0:4] = y[..., 0:4].sigmoid()
+                y[..., 5:] = y[..., 5:].sigmoid()
                 y[..., 0:2] = (y[..., 0:2] * 2. - 0.5 + self.grid[i].to(x[i].device)) * self.stride[i]  # xy
                 y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh
                 z.append(y.view(bs, -1, self.no))
@@ -46,7 +49,7 @@ class Detect(nn.Module):
 
 
 class Model(nn.Module):
-    def __init__(self, cfg='yolov5s.yaml', ch=3, nc=None):  # model, input channels, number of classes
+    def __init__(self, cfg='yolov5s.yaml', ch=5, nc=2):  # model, input channels, number of classes
         super(Model, self).__init__()
         if isinstance(cfg, dict):
             self.yaml = cfg  # model dict
