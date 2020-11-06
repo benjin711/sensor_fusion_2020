@@ -8,9 +8,13 @@ import numpy as np
 base_dir = '/media/carter/Samsung_T5/sensor_fusion_data_tmp_2'
 def main(cfg):
     base_dir = cfg.base_dir
+    start_idx = cfg.start_idx
     paths = glob.glob(os.path.join(base_dir, '*', 'data', '*', '*_labels', '*.txt'))
 
-    for p in tqdm(paths):
+    for i, p in enumerate(tqdm(paths)):
+        if i < start_idx:
+            continue
+
         data = np.genfromtxt(p) # cls, depth, xywh
         if len(data) == 0:
             os.remove(p)
