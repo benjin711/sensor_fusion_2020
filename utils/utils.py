@@ -941,7 +941,7 @@ def fitness(x):
 
 def output_to_target(output, width, height):
     # Output format is [xywh, conf, cls, depth]
-    # Convert model output to target format [batch_id, class_id, x, y, w, h, conf]
+    # Convert model output to target format [batch_id, class_id, depth, x, y, w, h, conf]
     if isinstance(output, torch.Tensor):
         output = output.cpu().numpy()
 
@@ -1083,8 +1083,8 @@ def plot_images(images, targets, paths=None, fname='images.jpg', names=None, max
             boxes = xywh2xyxy(image_targets[:, 3:7]).T
             classes = image_targets[:, 1].astype('int')
             depth = image_targets[:, 2].astype('int')
-            gt = image_targets.shape[1] == 6  # ground truth if no conf column
-            conf = None if gt else image_targets[:, 6]  # check for confidence presence (gt vs pred)
+            gt = image_targets.shape[1] == 7  # ground truth if no conf column
+            conf = None if gt else image_targets[:, 7]  # check for confidence presence (gt vs pred)
 
             boxes[[0, 2]] *= w
             boxes[[0, 2]] += block_x
