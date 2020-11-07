@@ -340,7 +340,7 @@ def train(hyp, tb_writer, opt, device):
                 ema.update_attr(model, include=['yaml', 'nc', 'hyp', 'gr', 'names', 'stride'])
             final_epoch = epoch + 1 == epochs
             if not opt.notest or final_epoch:  # Calculate mAP
-                results, maps, times = test.test(opt.data,
+                results, maps, times, inf_imgs = test.test(opt.data,
                                                  batch_size=total_batch_size,
                                                  imgsz=imgsz_test,
                                                  save_json=final_epoch and opt.data.endswith(os.sep + 'coco.yaml'),
@@ -363,6 +363,8 @@ def train(hyp, tb_writer, opt, device):
                             'val/giou_loss', 'val/obj_loss', 'val/cls_loss', 'val/depth_loss']
                     for x, tag in zip(list(mloss[:-1]) + list(results), tags):
                         tb_writer.add_scalar(tag, x, epoch)
+                    tb_writer.add_image('Prediction', inf_imgs[1], dataformats='HWC',
+                                        global_step=epoch)
 
                 # Update best mAP
                 fi = fitness(np.array(results).reshape(1, -1))  # fitness_i = weighted combination of [P, R, mAP, F1]
