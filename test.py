@@ -92,7 +92,8 @@ def test(data,
 
             # Compute loss
             if training:  # if model has loss hyperparameters
-                loss += compute_loss([x.float() for x in train_out], targets, model)[1][:4]  # GIoU, obj, cls, depth
+                _, loss_items = compute_loss([x.float() for x in train_out], targets, model)  # GIoU, obj, cls, depth
+                loss += loss_items[:4]
 
             # Run NMS
             t = torch_utils.time_synchronized()
