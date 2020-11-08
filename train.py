@@ -267,7 +267,8 @@ def train(hyp, tb_writer, opt, device):
         for i, (imgs, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
             ni = i + nb * epoch  # number integrated batches (since train start)
             imgs = imgs.to(device, non_blocking=True).float() # uint8 to float32, 0 - 255 to 0.0 - 1.0
-            imgs[:, :3, :, :] /= 255.0
+            imgs[:, :3, :, :] /= 255.0 # Rescale RGB channels
+            imgs[:, 3, :, :] /= 255.0 # Rescale depth channel. Max depth found in inputs was 202 m
 
             # Warmup
             if ni <= nw:

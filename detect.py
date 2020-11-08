@@ -54,6 +54,7 @@ def detect(save_img=False):
         img = torch.from_numpy(img).to(device)
         img = img.half() if half else img.float()  # uint8 to fp16/32
         img[:3, :, :] /= 255.0  # rescale RGB channels so that 0 - 255 to 0.0 - 1.0
+        img[3, :, :] /= 255.0 # Rescale depth channel. Max depth found was 202 m
         if img.ndimension() == 3:
             img = img.unsqueeze(0)
 
