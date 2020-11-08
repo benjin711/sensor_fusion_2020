@@ -94,32 +94,37 @@ class LoadImages:  # for inference
     def __init__(self, path, img_size=640):
         p = str(Path(path))  # os-agnostic
         p = os.path.abspath(p)  # absolute path
-        if '*' in p:
-            files = sorted(glob.glob(p))  # glob
-        elif os.path.isdir(p):
-            files = sorted(glob.glob(os.path.join(p, '*.*')))  # dir
-        elif os.path.isfile(p):
-            files = [p]  # files
-        else:
-            raise Exception('ERROR: %s does not exist' % p)
+        """Expects path to a directory with folders named *_filtered
+        *_di, and *_m. Where *_filtered contains .png images, *_di
+        and *_m contains .bin files."""
 
-        images = [
-            x for x in files if os.path.splitext(x)[-1].lower() in img_formats
+        self.images = glob.glob(os.path.join(p, '*_camera_filtered', '*.png'))
+        self.dis = [
+            x.replace('camera_filtered', 'di').replace('.png', '.bin')
+            for x in self.images
         ]
-        videos = [
-            x for x in files if os.path.splitext(x)[-1].lower() in vid_formats
+        self.masks = [
+            x.replace('camera_filtered', 'm').replace('.png', '.bin')
+            for x in self.images
         ]
-        ni, nv = len(images), len(videos)
+        # if '*' in p:
+        #     files = sorted(glob.glob(p))  # glob
+        # elif os.path.isdir(p):
+        #     files = sorted(glob.glob(os.path.join(p, '*.*')))  # dir
+        # elif os.path.isfile(p):
+        #     files = [p]  # files
+        # else:
+        #     raise Exception('ERROR: %s does not exist' % p)
+
+        ni = len(self.images)
+        # ni, nv = len(images), len(videos)
 
         self.img_size = img_size
-        self.files = images + videos
-        self.nf = ni + nv  # number of files
-        self.video_flag = [False] * ni + [True] * nv
+        self.files = self.images
+        self.nf = ni # number of files
+        self.video_flag = False
         self.mode = 'images'
-        if any(videos):
-            self.new_video(videos[0])  # new video
-        else:
-            self.cap = None
+
         assert self.nf > 0, 'No images or videos found in %s. Supported formats are:\nimages: %s\nvideos: %s' % \
                             (p, img_formats, vid_formats)
 
@@ -130,49 +135,55 @@ class LoadImages:  # for inference
     def __next__(self):
         if self.count == self.nf:
             raise StopIteration
-        path = self.files[self.count]
+        im_path = self.images[self.count]
+        di_path = self.dis[self.count]
+        m_path = self.masks[self.count]
+        self.cap = None
+        # if self.video_flag[self.count]:
+        #     # Read video
+        #     self.mode = 'video'
+        #     ret_val, img0 = self.cap.read()
+        #     if not ret_val:
+        #         self.count += 1
+        #         self.cap.release()
+        #         if self.count == self.nf:  # last video
+        #             raise StopIteration
+        #         else:
+        #             path = self.files[self.count]
+        #             self.new_video(path)
+        #             ret_val, img0 = self.cap.read()
+        #
+        #     self.frame += 1
+        #     print('video %g/%g (%g/%g) %s: ' %
+        #           (self.count + 1, self.nf, self.frame, self.nframes, path),
+        #           end='')
 
-        if self.video_flag[self.count]:
-            # Read video
-            self.mode = 'video'
-            ret_val, img0 = self.cap.read()
-            if not ret_val:
-                self.count += 1
-                self.cap.release()
-                if self.count == self.nf:  # last video
-                    raise StopIteration
-                else:
-                    path = self.files[self.count]
-                    self.new_video(path)
-                    ret_val, img0 = self.cap.read()
 
-            self.frame += 1
-            print('video %g/%g (%g/%g) %s: ' %
-                  (self.count + 1, self.nf, self.frame, self.nframes, path),
-                  end='')
+        # Read image
+        self.count += 1
+        img0 = cv2.imread(im_path)  # BGR
+        di0 = np.fromfile(di_path, dtype=np.float16).reshape(img0.shape[0],
+                                                             img0.shape[1],
+                                                             2)
+        d0 = di0[:, :, 0].reshape(img0.shape[0], img0.shape[1], 1)
+        i0 = di0[:, :, 1].reshape(img0.shape[0], img0.shape[1], 1)
+        m0 = np.fromfile(m_path, dtype=np.bool).reshape(img0.shape[0],
+                                                           img0.shape[1],
+                                                           1)
 
-        else:
-            # Read image
-            self.count += 1
-            img0 = cv2.imread(path)  # BGR
-            bm0 = np.fromfile(path.replace('img', 'dm').replace(
-                              os.path.splitext(path)[-1], '.bin'),
-                              dtype=np.float64).reshape(img0.shape[0],
-                                                        img0.shape[1],
-                                                        2)
-            assert img0 is not None, 'Image Not Found ' + path
-            print('image %g/%g %s: ' % (self.count, self.nf, path), end='')
+        assert img0 is not None, 'Image Not Found ' + im_path
+        print('image %g/%g %s: ' % (self.count, self.nf, im_path), end='')
 
-        img0 = np.concatenate((img0, bm0), axis=-1)
+        img0 = img0[:, :, ::-1]
+        img0 = np.concatenate((img0, d0, m0), axis=-1)
         # Padded resize
         img = letterbox(img0, new_shape=self.img_size)[0]
-
+        img = img.transpose(2, 0, 1)
         # Convert
-        img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, to 3x416x416
         img = np.ascontiguousarray(img)
 
         # cv2.imwrite(path + '.letterbox.jpg', 255 * img.transpose((1, 2, 0))[:, :, ::-1])  # save letterbox image
-        return path, img, img0, self.cap
+        return im_path, img, img0, self.cap
 
     def new_video(self, path):
         self.frame = 0
@@ -466,8 +477,8 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                 assert l.shape[1] == 6, '> 6 label columns: %s' % file
                 assert (l >= 0).all(), 'negative labels: %s' % file
                 # changed to 2: to adpat depth
-                assert (l[:, 2:] <= 1).all(
-                ), 'non-normalized or out of bounds coordinate labels: %s' % file
+                # assert (l[:, 2:] <= 1).all(
+                # ), 'non-normalized or out of bounds coordinate labels: %s' % file
                 if np.unique(l,
                              axis=0).shape[0] < l.shape[0]:  # duplicate rows
                     nd += 1  # print('WARNING: duplicate rows in %s' % self.label_files[i])  # duplicate rows
@@ -694,8 +705,8 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         # Convert
         channels = np.split(img, 5, axis=2)
         img = np.concatenate([channels[2], channels[1], channels[0],
-                              channels[3], channels[4]], axis=2)
-        img = img.transpose(2, 0, 1)  # BGR to RGB, to 3x416x416
+                              channels[3], channels[4]], axis=2) # BGR to RGB
+        img = img.transpose(2, 0, 1)   # Put channels first
         img = np.ascontiguousarray(img)
 
         return torch.from_numpy(img), labels_out, self.img_files[index], shapes

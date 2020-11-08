@@ -48,12 +48,12 @@ def detect(save_img=False):
 
     # Run inference
     t0 = time.time()
-    img = torch.zeros((1, 3, imgsz, imgsz), device=device)  # init img
+    img = torch.zeros((1, 5, imgsz, imgsz), device=device)  # init img
     _ = model(img.half() if half else img) if device.type != 'cpu' else None  # run once
     for path, img, im0s, vid_cap in dataset:
         img = torch.from_numpy(img).to(device)
         img = img.half() if half else img.float()  # uint8 to fp16/32
-        img /= 255.0  # 0 - 255 to 0.0 - 1.0
+        img[:3, :, :] /= 255.0  # rescale RGB channels so that 0 - 255 to 0.0 - 1.0
         if img.ndimension() == 3:
             img = img.unsqueeze(0)
 
@@ -85,12 +85,13 @@ def detect(save_img=False):
                 det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
 
                 # Print results
-                for c in det[:, -1].unique():
-                    n = (det[:, -1] == c).sum()  # detections per class
+                for c in det[:, -2].unique():
+                    n = (det[:, -2] == c).sum()  # detections per class
                     s += '%g %ss, ' % (n, names[int(c)])  # add to string
 
                 # Write results
-                for *xyxy, conf, cls in det:
+                im0_result = im0[:, :, :3].astype(np.uint8)
+                for *xyxy, conf, cls, depth in det:
                     if save_txt:  # Write to file
                         xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
                         with open(txt_path + '.txt', 'a') as f:
@@ -98,7 +99,8 @@ def detect(save_img=False):
 
                     if save_img or view_img:  # Add bbox to image
                         label = '%s %.2f' % (names[int(cls)], conf)
-                        plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=3)
+                        plot_one_box(xyxy, im0_result, label=label, color=colors[int(cls)], line_thickness=3,
+                                     depth=depth)
 
             # Print time (inference + NMS)
             print('%sDone. (%.3fs)' % (s, t2 - t1))
@@ -112,7 +114,7 @@ def detect(save_img=False):
             # Save results (image with detections)
             if save_img:
                 if dataset.mode == 'images':
-                    cv2.imwrite(save_path, im0)
+                    cv2.imwrite(save_path, im0_result)
                 else:
                     if vid_path != save_path:  # new video
                         vid_path = save_path
@@ -139,7 +141,7 @@ if __name__ == '__main__':
     parser.add_argument('--weights', nargs='+', type=str, default='yolov4l-mish.pt', help='model.pt path(s)')
     parser.add_argument('--source', type=str, default='inference/images', help='source')  # file/folder, 0 for webcam
     parser.add_argument('--output', type=str, default='inference/output', help='output folder')  # output folder
-    parser.add_argument('--img-size', type=int, default=640, help='inference size (pixels)')
+    parser.add_argument('--img-size', type=int, default=1280, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.4, help='object confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.5, help='IOU threshold for NMS')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
