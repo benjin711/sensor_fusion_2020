@@ -12,9 +12,9 @@ def main(cfg):
     label_paths = glob.glob(os.path.join(base_dir, '*', 'data', '*', '*_labels', '*.txt'))
     random.shuffle(label_paths)
 
-    im_paths = [x.replace('labels', 'camera_filtered').replace('png', 'bin') for x in label_paths]
-    di_paths = [x.replace('labels', 'di').replace('png', 'bin') for x in label_paths]
-    m_paths = [x.replace('labels', 'm').replace('png', 'bin') for x in label_paths]
+    im_paths = [x.replace('labels', 'camera_filtered').replace('txt', 'png') for x in label_paths]
+    di_paths = [x.replace('labels', 'di').replace('txt', 'bin') for x in label_paths]
+    m_paths = [x.replace('labels', 'm').replace('txt', 'bin') for x in label_paths]
 
     # Open one image to get dimensions. Assume same dimensions for all
     test_img = cv2.imread(im_paths[0])
