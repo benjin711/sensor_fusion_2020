@@ -363,10 +363,11 @@ def train(hyp, tb_writer, opt, device):
                             'val/giou_loss', 'val/obj_loss', 'val/cls_loss', 'val/depth_loss']
                     for x, tag in zip(list(mloss[:-1]) + list(results), tags):
                         tb_writer.add_scalar(tag, x, epoch)
-                    tb_writer.add_image('Prediction', inf_imgs[1], dataformats='HWC',
-                                        global_step=epoch)
-                    tb_writer.add_image('Ground-Truth', inf_imgs[0], dataformats='HWC',
-                                        global_step=epoch)
+                    if not isinstance(inf_imgs[0], type(None)):
+                        tb_writer.add_image('Prediction', inf_imgs[1], dataformats='HWC',
+                                            global_step=epoch)
+                        tb_writer.add_image('Ground-Truth', inf_imgs[0], dataformats='HWC',
+                                            global_step=epoch)
 
                 # Update best mAP
                 fi = fitness(np.array(results).reshape(1, -1))  # fitness_i = weighted combination of [P, R, mAP, F1]
