@@ -63,11 +63,18 @@ class Model(nn.Module):
         if nc and nc != self.yaml['nc']:
             print('Overriding %s nc=%g with nc=%g' % (cfg, self.yaml['nc'], nc))
             self.yaml['nc'] = nc  # override yaml value
-        self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch])  # model, savelist, ch_out
+
+        # TODO: update input channels from 32 to 5 if not splitting initial conv
+        self.model, self.save = parse_model(deepcopy(self.yaml), ch=[32])  # model, savelist, ch_out
         # print([x.shape for x in self.forward(torch.zeros(1, ch, 64, 64))])
 
         # Build strides, anchors
         m = self.model[-1]  # Detect()
+
+        # Initial convs
+        self.conv_rgb = nn.Conv2d(3, 16, 3)
+        self.conv_dm = nn.Conv2d(2, 16, 3)
+
         if isinstance(m, Detect):
             s = 128  # 2x min stride
             m.stride = torch.tensor([s / x.shape[-2] for x in self.forward(torch.zeros(1, ch, s, s))])  # forward
@@ -77,10 +84,14 @@ class Model(nn.Module):
             self._initialize_biases()  # only run once
             # print('Strides: %s' % m.stride.tolist())
 
+
+
         # Init weights, biases
         torch_utils.initialize_weights(self)
         self.info()
         print('')
+
+
 
     def forward(self, x, augment=False, profile=False):
         if augment:
@@ -102,6 +113,14 @@ class Model(nn.Module):
             return self.forward_once(x, profile)  # single-scale inference, train
 
     def forward_once(self, x, profile=False):
+        # Split RGB and dm. Conv each independently first.
+        input_rgb = x[:, :3, :, :]
+        input_dm = x[:, 3:, :, :]
+
+        x_rgb = self.conv_rgb(input_rgb)
+        x_dm = self.conv_dm(input_dm)
+        x = torch.cat([x_rgb, x_dm], dim=1)
+
         y, dt = [], []  # outputs
         for m in self.model:
             if m.f != -1:  # if not from previous layer
