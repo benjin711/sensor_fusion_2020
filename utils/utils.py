@@ -1082,7 +1082,7 @@ def plot_images(images, targets, paths=None, fname='images.jpg', names=None, max
             image_targets = targets[targets[:, 0] == i]
             boxes = xywh2xyxy(image_targets[:, 3:7]).T
             classes = image_targets[:, 1].astype('int')
-            depth = image_targets[:, 2].astype('int')
+            depth = image_targets[:, 2].astype('float')
             gt = image_targets.shape[1] == 7  # ground truth if no conf column
             conf = None if gt else image_targets[:, 7]  # check for confidence presence (gt vs pred)
 
