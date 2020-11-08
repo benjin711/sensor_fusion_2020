@@ -73,6 +73,7 @@ def test(data,
     s = ('%20s' + '%12s' * 6) % ('Class', 'Images', 'Targets', 'P', 'R', 'mAP@.5', 'mAP@.5:.95')
     p, r, f1, mp, mr, map50, map, t0, t1 = 0., 0., 0., 0., 0., 0., 0., 0., 0.
     loss = torch.zeros(4, device=device)
+    total_boxes = torch.zeros(1, device=device)
     jdict, stats, depth_stats, ap, ap_class = [], [], [], [], []
     for batch_i, (img, targets, paths, shapes) in enumerate(tqdm(dataloader, desc=s)):
         img = img.to(device, non_blocking=True)
@@ -82,6 +83,7 @@ def test(data,
         targets = targets.to(device)
         nb, _, height, width = img.shape  # batch size, channels, height, width
         whwh = torch.Tensor([width, height, width, height]).to(device)
+        total_boxes += targets.shape[0]
 
         # Disable gradients
         with torch.no_grad():
@@ -155,7 +157,7 @@ def test(data,
                     ti = (cls == tcls_tensor).nonzero().view(-1)  # target indices
                     pi = (cls == pred[:, 5]).nonzero().view(-1)  # prediction indices
 
-                    # Search for detections
+                    # Search for detections of that class
                     if pi.shape[0]:
                         # Prediction to target ious
                         ious, i = box_iou(pred[pi, :4], tbox[ti]).max(1)  # best ious, indices
@@ -234,7 +236,7 @@ def test(data,
     maps = np.zeros(nc) + map
     for i, c in enumerate(ap_class):
         maps[c] = ap[i]
-    return (mp, mr, map50, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t, (gt_result, pred_result)
+    return (mp, mr, map50, map, loss[-1]/total_boxes, *(loss.cpu() / len(dataloader)).tolist()), maps, t, (gt_result, pred_result)
 
 
 if __name__ == '__main__':

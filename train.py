@@ -224,7 +224,7 @@ def train(hyp, tb_writer, opt, device):
     t0 = time.time()
     nw = max(3 * nb, 1e3)  # number of warmup iterations, max(3 epochs, 1k iterations)
     maps = np.zeros(nc)  # mAP per class
-    results = (0, 0, 0, 0, 0, 0, 0)  # 'P', 'R', 'mAP', 'F1', 'val GIoU', 'val Objectness', 'val Classification'
+    results = (0, 0, 0, 0, 0, 0, 0, 0)  # 'P', 'R', 'mAP50', 'mAP', 'mDepth', 'val GIoU', 'val Objectness', 'val Classification'
     scheduler.last_epoch = start_epoch - 1  # do not move
     if rank in [0, -1]:
         print('Image sizes %g train, %g test' % (imgsz, imgsz_test))
@@ -352,7 +352,7 @@ def train(hyp, tb_writer, opt, device):
 
                 # Write
                 with open(results_file, 'a') as f:
-                    f.write(s + '%10.4g' * 8 % results + '\n')  # P, R, mAP, F1, test_losses=(GIoU, obj, cls, depth)
+                    f.write(s + '%10.4g' * 9 % results + '\n')  # P, R, mAP, F1, mDepth, test_losses=(GIoU, obj, cls, depth)
                 if len(opt.name) and opt.bucket:
                     os.system('gsutil cp %s gs://%s/results/results%s.txt' % (results_file, opt.bucket, opt.name))
 
@@ -361,6 +361,7 @@ def train(hyp, tb_writer, opt, device):
                 if tb_writer:
                     tags = ['train/giou_loss', 'train/obj_loss', 'train/cls_loss', 'train/depth_loss',
                             'metrics/precision', 'metrics/recall', 'metrics/mAP_0.5', 'metrics/mAP_0.5:0.95',
+                            'metrics/mean_depth',
                             'val/giou_loss', 'val/obj_loss', 'val/cls_loss', 'val/depth_loss']
                     for x, tag in zip(list(mloss[:-1]) + list(results), tags):
                         tb_writer.add_scalar(tag, x, epoch)
