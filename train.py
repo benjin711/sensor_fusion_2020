@@ -182,10 +182,11 @@ def train(hyp, tb_writer, opt, device):
         model = DDP(model, device_ids=[rank], output_device=rank)
 
     # Trainloader
-    num_train_samples = opt.num_train
-    dataloader, dataset = create_dataloader(train_path, imgsz, batch_size, gs, opt, hyp=hyp, augment=True,
+
+    num_train = opt.num_train
+    dataloader, dataset = create_dataloader(train_path, imgsz, batch_size, gs, opt, hyp=hyp, augment=False,
                                             cache=opt.cache_images, rect=opt.rect, local_rank=rank,
-                                            world_size=opt.world_size, num_samples=num_train_samples)
+                                            world_size=opt.world_size, num_samples=num_train)
     mlc = np.concatenate(dataset.labels, 0)[:, 0].max()  # max label class
     nb = len(dataloader)  # number of batches
     assert mlc < nc, 'Label class %g exceeds nc=%g in %s. Possible class labels are 0-%g' % (mlc, nc, opt.data, nc - 1)
@@ -193,10 +194,10 @@ def train(hyp, tb_writer, opt, device):
     # Testloader
     if rank in [-1, 0]:
         # local_rank is set to -1. Because only the first process is expected to do evaluation.
-        num_val_samples = opt.num_val
+        num_val = opt.num_val
         testloader = create_dataloader(test_path, imgsz_test, total_batch_size, gs, opt, hyp=hyp, augment=False,
                                        cache=opt.cache_images, rect=True, local_rank=-1, world_size=opt.world_size,
-                                       num_samples=num_val_samples)[0]
+                                       num_samples=num_val)[0]
 
     # Model parameters
     hyp['cls'] *= nc / 80.  # scale coco-tuned hyp['cls'] to current dataset
@@ -287,8 +288,11 @@ def train(hyp, tb_writer, opt, device):
                 sf = sz / max(imgs.shape[2:])  # scale factor
                 if sf != 1:
                     ns = [math.ceil(x * sf / gs) * gs for x in imgs.shape[2:]]  # new shape (stretched to gs-multiple)
-                    imgs = F.interpolate(imgs, size=ns, mode='bilinear', align_corners=False)
-
+                    N, C, H, W = imgs.shape
+                    tmp_imgs = torch.zeros((N, C, round(H*sf), round(W*sf)))
+                    tmp_imgs[:, 3:, :, :] = resize_dm_torch(imgs[:, 3:, :, :], sf)
+                    tmp_imgs[:, :3, :, :] = F.interpolate(imgs[:, :3, :, :], size=(round(H*sf), round(W*sf)), mode='bilinear', align_corners=False)
+                    imgs, _, _ = letterbox_torch(tmp_imgs, ns)
             # Forward
             pred = model(imgs)
 

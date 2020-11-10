@@ -9,6 +9,7 @@ from threading import Thread
 
 import cv2
 import numpy as np
+import torch.nn.functional as F
 import torch
 from PIL import Image, ExifTags
 from torch.utils.data import Dataset
@@ -712,10 +713,27 @@ def resize_dm(dm, scale):
     indices = np.where(dm[:, :, 1] > 0)
     new_indices = (np.array(indices[0] * scale).astype(np.int),
                    np.array(indices[1] * scale).astype(np.int))
-    output = np.zeros((int(h0 * scale), int(w0 * scale), 2))
+    output = np.zeros((round(h0 * scale), round(w0 * scale), 2))
     output[new_indices[0], new_indices[1], :] = dm[indices[0], indices[1], :]
+
     return output
 
+def resize_dm_torch(dm, scale):
+    """Assume an input tensor of shape (N, H, W, 2)"""
+    dm_numpy = dm.detach().cpu().numpy()
+    device = dm.device
+    N, C, h0, w0 = dm.shape
+    output = np.empty_like(dm_numpy, shape=(N, C, round(h0 * scale), round(w0 * scale)))
+    for i in range(N):
+        dm_i = dm_numpy[i, :, :, :]
+        indices = np.where(dm_i > 0)
+        new_indices = (np.array(indices[1] * scale).astype(np.int),
+                       np.array(indices[2] * scale).astype(np.int))
+        output[i, :, new_indices[0], new_indices[1]] = dm_numpy[i, :, indices[1], indices[2]]
+
+    output = torch.from_numpy(output)
+    output.to(device)
+    return output
 
 def load_image(self, index):
     # loads 1 image from dataset, returns img, original hw, resized hw
@@ -866,6 +884,59 @@ def replicate(img, labels):
     return img, labels
 
 
+def letterbox_torch(imgs,
+              new_shape=(640, 640),
+              color=(114, 114, 114),
+              auto=True,
+              scaleFill=False,
+              scaleup=True):
+
+    device = imgs.device
+    imgs = imgs.detach().cpu().numpy()
+    # Resize image to a 32-pixel-multiple rectangle https://github.com/ultralytics/yolov3/issues/232
+    shape = imgs.shape[2:]  # current shape [height, width]
+    if isinstance(new_shape, int):
+        new_shape = (new_shape, new_shape)
+
+    # Scale ratio (new / old)
+    r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
+    if not scaleup:  # only scale down, do not scale up (for better test mAP)
+        r = min(r, 1.0)
+
+    # Compute padding
+    ratio = r, r  # width, height ratios
+    new_unpad = int(shape[1] * r), int(shape[0] * r)
+    dw, dh = new_shape[1] - new_unpad[0], new_shape[0] - new_unpad[
+        1]  # wh padding
+    if auto:  # minimum rectangle
+        dw, dh = np.mod(dw, 64), np.mod(dh, 64)  # wh padding
+    elif scaleFill:  # stretch
+        dw, dh = 0.0, 0.0
+        new_unpad = (new_shape[1], new_shape[0])
+        ratio = new_shape[1] / shape[1], new_shape[0] / shape[
+            0]  # width, height ratios
+
+    dw /= 2  # divide padding into 2 sides
+    dh /= 2
+
+    if shape[::-1] != new_unpad:  # resize
+        dm_part = resize_dm_torch(imgs[:, 3:, :, :], r)
+        img_part = F.interpolate(imgs[:, :3, :, :], size=(new_unpad), mode='bilinear', align_corners=False)
+        imgs = np.concatenate((img_part, dm_part), axis=1)
+
+    top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
+    left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
+
+    N, c, h_new, w_new = imgs.shape[0], imgs.shape[1], new_shape[0], new_shape[1]
+    new_imgs = np.empty_like(imgs, shape=(N, c, h_new, w_new))
+    rgb_pad_value = 144.0/255.0
+    new_imgs[:, :3, :, :] = np.pad(imgs[:, :3, :, :], ((0, 0), (0, 0), (top, bottom), (left, right)), constant_values=((0, 0), (0, 0), (rgb_pad_value, rgb_pad_value), (rgb_pad_value, rgb_pad_value)))
+    new_imgs[:, 3:, :, :] = np.pad(imgs[:, 3:, :, :], ((0, 0), (0, 0), (top, bottom), (left, right)), constant_values=((0, 0), (0, 0), (0, 0), (0, 0)))
+    new_imgs = torch.from_numpy(new_imgs)
+    new_imgs.to(device)
+    return new_imgs, ratio, (dw, dh)
+
+
 def letterbox(img,
               new_shape=(640, 640),
               color=(114, 114, 114),
@@ -905,13 +976,18 @@ def letterbox(img,
                          interpolation=cv2.INTER_LINEAR)
         img = np.concatenate((img, dm), axis=-1)
 
-    # JP: Turned off border as the function actually changed image shape
-    #      Don't think border is important
+    dm = img[:, :, 3:]
+    d = dm[:, :, 0]
+    m = dm[:, :, 1]
     top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
     left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
-    img = np.pad(img, ((top, bottom), (left, right), (0, 0)), constant_values=((144, 144), (144, 144), (0, 0)))
 
-    return img, ratio, (dw, dh)
+    h_new, w_new, c = new_shape[0], new_shape[1], img.shape[2]
+    new_img = np.zeros((h_new, w_new, c))
+    new_img[:, :, :3] = np.pad(img[:, :, :3], ((top, bottom), (left, right), (0, 0)), constant_values=((144, 144), (144, 144), (0, 0)))
+    new_img[:, :, 3:] = np.pad(img[:, :, 3:], ((top, bottom), (left, right), (0, 0)), constant_values=((0, 0), (0, 0), (0, 0)))
+
+    return new_img, ratio, (dw, dh)
 
 
 def random_affine(img,
