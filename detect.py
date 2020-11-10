@@ -44,7 +44,8 @@ def detect(save_img=False):
 
     # Get names and colors
     names = model.module.names if hasattr(model, 'module') else model.names
-    colors = [[random.randint(0, 255) for _ in range(3)] for _ in range(len(names))]
+    # colors = [[random.randint(0, 255) for _ in range(3)] for _ in range(len(names))]
+    colors = [[255, 0, 0], [0, 255, 255]]
 
     # Run inference
     t0 = time.time()
@@ -100,7 +101,7 @@ def detect(save_img=False):
 
                     if save_img or view_img:  # Add bbox to image
                         label = '%s %.2f' % (names[int(cls)], conf)
-                        plot_one_box(xyxy, im0_result, label=label, color=colors[int(cls)], line_thickness=3,
+                        plot_one_box(xyxy, im0_result, label=label, color=colors[int(cls)], line_thickness=2,
                                      depth=depth)
 
             # Print time (inference + NMS)

@@ -725,7 +725,7 @@ def resize_dm(dm, scale):
     new_indices = (np.array(indices[0] * scale).astype(np.int),
                    np.array(indices[1] * scale).astype(np.int))
     output = np.zeros((int(h0 * scale), int(w0 * scale), 2))
-    output[new_indices] = dm[indices]
+    output[new_indices[0], new_indices[1], :] = dm[indices[0], indices[1], :]
     return output
 
 
@@ -884,6 +884,7 @@ def letterbox(img,
               auto=True,
               scaleFill=False,
               scaleup=True):
+
     # Resize image to a 32-pixel-multiple rectangle https://github.com/ultralytics/yolov3/issues/232
     shape = img.shape[:2]  # current shape [height, width]
     if isinstance(new_shape, int):
@@ -916,17 +917,11 @@ def letterbox(img,
                          interpolation=cv2.INTER_LINEAR)
         img = np.concatenate((img, dm), axis=-1)
 
-    # JP: Turned off boarder as the function actually changed image shape
-    #      Don't think boarder is important
-    # top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
-    # left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
-    # img[:, :, 3] = cv2.copyMakeBorder(img[:, :, :3].astype(np.uint8),
-    #                          top,
-    #                          bottom,
-    #                          left,
-    #                          right,
-    #                          cv2.BORDER_CONSTANT,
-    #                          value=color)  # add border
+    # JP: Turned off border as the function actually changed image shape
+    #      Don't think border is important
+    top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
+    left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
+    img = np.pad(img, ((top, bottom), (left, right), (0, 0)), constant_values=((144, 144), (144, 144), (0, 0)))
 
     return img, ratio, (dw, dh)
 
