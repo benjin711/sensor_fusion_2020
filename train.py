@@ -293,6 +293,7 @@ def train(hyp, tb_writer, opt, device):
                     tmp_imgs[:, 3:, :, :] = resize_dm_torch(imgs[:, 3:, :, :], sf)
                     tmp_imgs[:, :3, :, :] = F.interpolate(imgs[:, :3, :, :], size=(round(H*sf), round(W*sf)), mode='bilinear', align_corners=False)
                     imgs, _, _ = letterbox_torch(tmp_imgs, ns)
+                    imgs = imgs.to(device)
             # Forward
             pred = model(imgs)
 
