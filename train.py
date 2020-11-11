@@ -289,11 +289,15 @@ def train(hyp, tb_writer, opt, device):
                 if sf != 1:
                     ns = [math.ceil(x * sf / gs) * gs for x in imgs.shape[2:]]  # new shape (stretched to gs-multiple)
                     N, C, H, W = imgs.shape
-                    tmp_imgs = torch.zeros((N, C, round(H*sf), round(W*sf)))
+                    unpad_shape = (round(H*sf), round(W*sf))
+                    tmp_imgs = torch.empty((N, C, round(H*sf), round(W*sf)), dtype=imgs.dtype, layout=imgs.layout, device=imgs.device)
+                    tmp_imgs[:, :, :, :] = 0
                     tmp_imgs[:, 3:, :, :] = resize_dm_torch(imgs[:, 3:, :, :], sf)
-                    tmp_imgs[:, :3, :, :] = F.interpolate(imgs[:, :3, :, :], size=(round(H*sf), round(W*sf)), mode='bilinear', align_corners=False)
-                    imgs, _, _ = letterbox_torch(tmp_imgs, ns)
-                    imgs = imgs.to(device)
+                    tmp_imgs[:, :3, :, :] = F.interpolate(imgs[:, :3, :, :], size=unpad_shape, mode='bilinear', align_corners=False)
+                    imgs, ratio, (dw, dh) = letterbox_torch(tmp_imgs, ns)
+                    imgs = imgs.to(device, non_blocking=True)
+
+                    targets = multiscale_targets(targets, unpad_shape, (dw, dh), ns)
             # Forward
             pred = model(imgs)
 

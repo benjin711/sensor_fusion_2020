@@ -719,20 +719,18 @@ def resize_dm(dm, scale):
     return output
 
 def resize_dm_torch(dm, scale):
-    """Assume an input tensor of shape (N, H, W, 2)"""
+    """Assume an input tensor of shape (N, 2, H, W)"""
     dm_numpy = dm.detach().cpu().numpy()
-    device = dm.device
     N, C, h0, w0 = dm.shape
-    output = np.empty_like(dm_numpy, shape=(N, C, round(h0 * scale), round(w0 * scale)))
+    output = torch.empty((N, C, round(h0 * scale), round(w0 * scale)), dtype=dm.dtype, layout=dm.layout, device=dm.device)
+    output[:, :, :, :] = 0
     for i in range(N):
         dm_i = dm_numpy[i, :, :, :]
         indices = np.where(dm_i > 0)
         new_indices = (np.array(indices[1] * scale).astype(np.int),
                        np.array(indices[2] * scale).astype(np.int))
-        output[i, :, new_indices[0], new_indices[1]] = dm_numpy[i, :, indices[1], indices[2]]
+        output[i, :, new_indices[0], new_indices[1]] = torch.transpose(torch.from_numpy(dm_numpy[i, :, indices[1], indices[2]]), 0, 1)
 
-    output = torch.from_numpy(output)
-    output.to(device)
     return output
 
 def load_image(self, index):
@@ -762,7 +760,7 @@ def load_image(self, index):
             interp = cv2.INTER_AREA if r < 1 and not self.augment else cv2.INTER_LINEAR
             dm = resize_dm(img[:, :, 3:], r)
             img = cv2.resize(img[:, :, :3].astype(np.uint8),
-                             (int(w0 * r), int(h0 * r)),
+                             (round(w0 * r), round(h0 * r)),
                              interpolation=interp)
             img = np.concatenate((img, dm), axis=-1)
         return img, (h0, w0), img.shape[:2]  # img, hw_original, hw_resized
@@ -891,7 +889,8 @@ def letterbox_torch(imgs,
               scaleFill=False,
               scaleup=True):
 
-    device = imgs.device
+    N, c, h_new, w_new = imgs.shape[0], imgs.shape[1], new_shape[0], new_shape[1]
+    new_imgs = torch.empty((N, c, h_new, w_new), dtype=imgs.dtype, layout=imgs.layout, device=imgs.device)
     imgs = imgs.detach().cpu().numpy()
     # Resize image to a 32-pixel-multiple rectangle https://github.com/ultralytics/yolov3/issues/232
     shape = imgs.shape[2:]  # current shape [height, width]
@@ -927,13 +926,10 @@ def letterbox_torch(imgs,
     top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
     left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
 
-    N, c, h_new, w_new = imgs.shape[0], imgs.shape[1], new_shape[0], new_shape[1]
-    new_imgs = np.empty_like(imgs, shape=(N, c, h_new, w_new))
+
     rgb_pad_value = 144.0/255.0
-    new_imgs[:, :3, :, :] = np.pad(imgs[:, :3, :, :], ((0, 0), (0, 0), (top, bottom), (left, right)), constant_values=((0, 0), (0, 0), (rgb_pad_value, rgb_pad_value), (rgb_pad_value, rgb_pad_value)))
-    new_imgs[:, 3:, :, :] = np.pad(imgs[:, 3:, :, :], ((0, 0), (0, 0), (top, bottom), (left, right)), constant_values=((0, 0), (0, 0), (0, 0), (0, 0)))
-    new_imgs = torch.from_numpy(new_imgs)
-    new_imgs.to(device)
+    new_imgs[:, :3, :, :] = torch.from_numpy(np.pad(imgs[:, :3, :, :], ((0, 0), (0, 0), (top, bottom), (left, right)), constant_values=((0, 0), (0, 0), (rgb_pad_value, rgb_pad_value), (rgb_pad_value, rgb_pad_value))))
+    new_imgs[:, 3:, :, :] = torch.from_numpy(np.pad(imgs[:, 3:, :, :], ((0, 0), (0, 0), (top, bottom), (left, right)), constant_values=((0, 0), (0, 0), (0, 0), (0, 0))))
     return new_imgs, ratio, (dw, dh)
 
 
@@ -988,6 +984,39 @@ def letterbox(img,
     new_img[:, :, 3:] = np.pad(img[:, :, 3:], ((top, bottom), (left, right), (0, 0)), constant_values=((0, 0), (0, 0), (0, 0)))
 
     return new_img, ratio, (dw, dh)
+
+
+def multiscale_targets(targets, unpad_shape, pad, new_shape):
+    """Given Nx7 targets, where each row is [nb, cls, depth, XYWH]
+       where xywh is normalized..
+       bring it to the unpadded_shape, and then add padding, then renormalize"""
+    device = targets.device
+    targets = targets.detach().cpu().numpy()
+    xywh = targets[:, 2:]
+
+    h1, w1 = unpad_shape
+    h2, w2 = new_shape
+
+    # Rescale
+    xywh[:, 0] *= w1
+    xywh[:, 2] *= w1
+    xywh[:, 1] *= h1
+    xywh[:, 3] *= h1
+
+    # Offset by padding
+    xywh[:, 0] += pad[0]
+    xywh[:, 1] += pad[1]
+
+    # Renormalize
+    xywh[:, 0] /= w2
+    xywh[:, 2] /= w2
+    xywh[:, 1] /= h2
+    xywh[:, 3] /= h2
+
+    targets[:, 2:] = xywh
+    targets = torch.from_numpy(targets)
+    targets = targets.to(device)
+    return targets
 
 
 def random_affine(img,
