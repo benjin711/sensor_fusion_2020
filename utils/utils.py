@@ -525,7 +525,7 @@ def compute_loss(p, targets, model):  # predictions, targets, model
             # with open('targets.txt', 'a') as file:
             #     [file.write('%11.5g ' * 4 % tuple(x) + '\n') for x in torch.cat((txy[i], twh[i]), 1)]
 
-        ldepth += BHdepth.forward(tdepth[i], pdepth)
+            ldepth += BHdepth.forward(tdepth[i], pdepth)
         lobj += BCEobj(pi[..., 5], tobj) * balance[i]  # obj loss
 
     s = 3 / np  # output count scaling
