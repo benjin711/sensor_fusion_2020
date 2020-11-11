@@ -637,22 +637,10 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             if x.size > 0:
                 # Normalized xywh to pixel xyxy format
                 labels = x.copy()
-                # labels[:,
-                # 1] = ratio[0] * w * (x[:, 1] -
-                #                      x[:, 3] / 2) + pad[0]  # pad width
-                # labels[:,
-                # 2] = ratio[1] * h * (x[:, 2] -
-                #                      x[:, 4] / 2) + pad[1]  # pad height
-                # labels[:, 3] = ratio[0] * w * (x[:, 1] + x[:, 3] / 2) + pad[0]
-                # labels[:, 4] = ratio[1] * h * (x[:, 2] + x[:, 4] / 2) + pad[1]
-                labels[:,
-                       2] = ratio[0] * w * (x[:, 2] -
-                                            x[:, 4] / 2) + pad[0]  # pad width
-                labels[:,
-                       3] = ratio[1] * h * (x[:, 3] -
-                                            x[:, 5] / 2) + pad[1]  # pad height
-                labels[:, 4] = ratio[0] * w * (x[:, 2] + x[:, 4] / 2) + pad[0]
-                labels[:, 5] = ratio[1] * h * (x[:, 3] + x[:, 5] / 2) + pad[1]
+                labels[:, 2] = ratio[0] * w * (x[:, 2] - x[:, 4]/2) + pad[0]  # pad width
+                labels[:, 3] = ratio[1] * h * (x[:, 3] - x[:, 5]/2) + pad[1]  # pad height
+                labels[:, 4] = ratio[0] * w * (x[:, 2] + x[:, 4]/2) + pad[0]
+                labels[:, 5] = ratio[1] * h * (x[:, 3] + x[:, 5]/2) + pad[1]
 
         if self.augment:
             # Augment imagespace
