@@ -729,7 +729,7 @@ def resize_dm_torch(dm, scale):
         indices = np.where(dm_i > 0)
         new_indices = (np.array(indices[1] * scale).astype(np.int),
                        np.array(indices[2] * scale).astype(np.int))
-        output[i, :, new_indices[0], new_indices[1]] = torch.transpose(torch.from_numpy(dm_numpy[i, :, indices[1], indices[2]]), 0, 1)
+        output[i, :, new_indices[0], new_indices[1]] = torch.transpose(torch.from_numpy(dm_numpy[i, :, indices[1], indices[2]]), 0, 1).to(dm.device)
 
     return output
 
