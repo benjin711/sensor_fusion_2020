@@ -45,7 +45,7 @@ def detect(save_img=False):
     # Get names and colors
     names = model.module.names if hasattr(model, 'module') else model.names
     # colors = [[random.randint(0, 255) for _ in range(3)] for _ in range(len(names))]
-    colors = [[255, 0, 0], [0, 255, 255]]
+    colors = [[0, 0, 255], [255, 255, 0]]
 
     # Run inference
     t0 = time.time()
@@ -116,6 +116,7 @@ def detect(save_img=False):
             # Save results (image with detections)
             if save_img:
                 if dataset.mode == 'images':
+                    im0_result = cv2.cvtColor(im0_result, cv2.COLOR_BGR2RGB)
                     cv2.imwrite(save_path, im0_result)
                 else:
                     if vid_path != save_path:  # new video
