@@ -92,7 +92,7 @@ def create_dataloader(path,
 
 
 class LoadImages:  # for inference
-    def __init__(self, path, img_size=640):
+    def __init__(self, path, img_size=640, rect=False, stride=32):
         p = str(Path(path))  # os-agnostic
         p = os.path.abspath(p)  # absolute path
         """Expects path to a directory with folders named *_filtered
@@ -119,6 +119,16 @@ class LoadImages:  # for inference
 
         ni = len(self.images)
         # ni, nv = len(images), len(videos)
+
+        # Assumes width dimension longer than height
+        self.rect = rect
+        raw_shape = np.array(cv2.imread(self.images[0]).shape[:2])
+        if self.rect:
+            normalized_shape = raw_shape/raw_shape[1]
+            self.img_shape = np.ceil(normalized_shape * img_size / stride).astype(
+                                np.int) * stride
+        else:
+            self.img_shape = np.array([img_size, img_size])
 
         self.img_size = img_size
         self.files = self.images
@@ -159,7 +169,6 @@ class LoadImages:  # for inference
         #           (self.count + 1, self.nf, self.frame, self.nframes, path),
         #           end='')
 
-
         # Read image
         self.count += 1
         img0 = cv2.imread(im_path)  # BGR
@@ -178,7 +187,7 @@ class LoadImages:  # for inference
         img0 = img0[:, :, ::-1]
         img0 = np.concatenate((img0, d0, m0), axis=-1)
         # Padded resize
-        img = letterbox(img0, new_shape=self.img_size)[0]
+        img = letterbox(img0, new_shape=self.img_shape)[0]
         img = img.transpose(2, 0, 1)
         # Convert
         img = np.ascontiguousarray(img)
@@ -713,7 +722,7 @@ def resize_dm(dm, scale):
     indices = np.where(dm[:, :, 1] > 0)
     new_indices = (np.array(indices[0] * scale).astype(np.int),
                    np.array(indices[1] * scale).astype(np.int))
-    output = np.zeros((round(h0 * scale), round(w0 * scale), 2))
+    output = np.zeros((int(round(h0 * scale)), int(round(w0 * scale)), 2))
     output[new_indices[0], new_indices[1], :] = dm[indices[0], indices[1], :]
 
     return output
