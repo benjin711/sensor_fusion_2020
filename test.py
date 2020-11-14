@@ -179,8 +179,8 @@ def test(data,
                             d = ti[i[j]]  # detected target
                             if d not in detected:
                                 if generate_depth_stats:
-                                    depth_gt = tdepth_tensor[d]
-                                    depth = pdepth[j]
+                                    depth_gt = float(tdepth_tensor[d])
+                                    depth = float(pdepth[j])
                                     box = pred[j, :4]
                                     box_h, box_w = float(
                                     box[0, 3] - box[0, 1]), float(
