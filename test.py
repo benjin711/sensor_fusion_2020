@@ -178,20 +178,19 @@ def test(data,
                         for j in (ious > iouv[0]).nonzero():
                             d = ti[i[j]]  # detected target
                             if d not in detected:
-                                if generate_depth_stats:
-                                    depth_gt = float(tdepth_tensor[d])
-                                    depth = float(pdepth[j])
-                                    box = pred[j, :4]
-                                    box_h, box_w = float(
-                                    box[0, 3] - box[0, 1]), float(
-                                    box[0, 2] - box[0, 0])
+                                depth_gt = float(tdepth_tensor[d])
+                                depth = float(pdepth[j])
+                                box = pred[j, :4]
+                                box_h, box_w = float(
+                                box[0, 3] - box[0, 1]), float(
+                                box[0, 2] - box[0, 0])
 
-                                    # Log depth statistics
-                                    depth_stats['box_width'].append(box_w)
-                                    depth_stats['box_height'].append(box_h)
-                                    depth_stats['depth_pred'].append(depth)
-                                    depth_stats['depth_true'].append(depth_gt)
-                                    depth_stats['depth_error'].append(abs(depth-depth_gt))
+                                # Log depth statistics
+                                depth_stats['box_width'].append(box_w)
+                                depth_stats['box_height'].append(box_h)
+                                depth_stats['depth_pred'].append(depth)
+                                depth_stats['depth_true'].append(depth_gt)
+                                depth_stats['depth_error'].append(abs(depth-depth_gt))
 
                                 detected.append(d)
                                 correct[pi[j]] = ious[j] > iouv  # iou_thres is 1xn
@@ -275,7 +274,7 @@ def test(data,
     maps = np.zeros(nc) + map
     for i, c in enumerate(ap_class):
         maps[c] = ap[i]
-    return (mp, mr, map50, map, loss[-1]/total_boxes, *(loss.cpu() / len(dataloader)).tolist()), maps, t, (gt_result, pred_result)
+    return (mp, mr, map50, map, np.mean(np.array(depth_stats['depth_error'])), *(loss.cpu() / len(dataloader)).tolist()), maps, t, (gt_result, pred_result)
 
 
 if __name__ == '__main__':
