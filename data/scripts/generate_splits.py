@@ -63,7 +63,7 @@ if __name__ == '__main__':
     parser.add_argument('--test-ratio', type=float, default=0.1,
                         help='Percentage of labels to use for testing (<=1.00)')
     parser.add_argument('--total-num', type=int, default=-1, help='Total number of labels to use. Default is all.')
-    parser.add_argument('--all-available', action='store-true', help='Only store labels that are available for all three cameras.'
+    parser.add_argument('--all-available', action='store_true', help='Only store labels that are available for all three cameras.'
                                                                      'Forward label is written to the txt files.')
     args = parser.parse_args()
     generate_splits(args)

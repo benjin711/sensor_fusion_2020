@@ -91,6 +91,151 @@ def create_dataloader(path,
     return dataloader, dataset
 
 
+class LoadJointImages:
+    def __init__(self, path, img_size=640, rect=False, stride=32):
+        p = str(Path(path))  # os-agnostic
+        p = os.path.abspath(p)  # absolute path
+        """Expects path to a txt file containing paths to forward camera
+        labels. Image paths for forward, left, and right are generated from 
+        those."""
+
+        with open(path, 'r') as label_f:
+            labels = label_f.read().split('\n')
+            labels.pop() # \n on the last line results in empty list element
+
+        self.forward_images = [label_path.replace('labels', 'camera_filtered').replace('.txt', '.png')
+                               for label_path in labels]
+        self.left_images = [forward_path.replace('forward', 'left')
+                            for forward_path in self.forward_images]
+        self.right_images = [forward_path.replace('forward', 'right')
+                             for forward_path in self.forward_images]
+
+
+        self.forward_dis = [image_path.replace('camera_filtered', 'di').replace('.png', '.bin')
+                            for image_path in self.forward_images]
+        self.forward_masks = [
+            image_path.replace('camera_filtered', 'm').replace('.png', '.bin')
+            for image_path in self.forward_images]
+
+        self.left_dis = [
+            image_path.replace('camera_filtered', 'di').replace('.png', '.bin')
+            for image_path in self.left_images]
+        self.left_masks = [
+            image_path.replace('camera_filtered', 'm').replace('.png', '.bin')
+            for image_path in self.left_images]
+
+        self.right_dis = [
+            image_path.replace('camera_filtered', 'di').replace('.png', '.bin')
+            for image_path in self.right_images]
+        self.right_masks = [
+            image_path.replace('camera_filtered', 'm').replace('.png', '.bin')
+            for image_path in self.right_images]
+
+        ni = len(self.forward_images)
+        # ni, nv = len(images), len(videos)
+
+        # Assumes width dimension longer than height
+        self.rect = rect
+        raw_shape = np.array(cv2.imread(self.forward_images[0]).shape[:2])
+        if self.rect:
+            normalized_shape = raw_shape/raw_shape[1]
+            self.img_shape = np.ceil(normalized_shape * img_size / stride).astype(
+                                np.int) * stride
+        else:
+            self.img_shape = np.array([img_size, img_size])
+
+        self.img_size = img_size
+        self.nf = ni # number of files
+        self.video_flag = False
+        self.mode = 'images'
+
+        assert self.nf > 0, 'No images or videos found in %s. Supported formats are:\nimages: %s\nvideos: %s' % \
+                            (p, img_formats, vid_formats)
+
+    def __iter__(self):
+        self.count = 0
+        return self
+
+    def __next__(self):
+        if self.count == self.nf:
+            raise StopIteration
+
+        forward_im_path = self.forward_images[self.count]
+        forward_di_path = self.forward_dis[self.count]
+        forward_m_path = self.forward_masks[self.count]
+
+        left_im_path = self.left_images[self.count]
+        left_di_path = self.left_dis[self.count]
+        left_m_path = self.left_masks[self.count]
+
+        right_im_path = self.right_images[self.count]
+        right_di_path = self.right_dis[self.count]
+        right_m_path = self.right_masks[self.count]
+
+        # Read image
+        self.count += 1
+        img_f = cv2.imread(forward_im_path)  # BGR
+        di_f = np.fromfile(forward_di_path, dtype=np.float16).reshape(img_f.shape[0],
+                                                             img_f.shape[1],
+                                                             2)
+        d_f = di_f[:, :, 0].reshape(img_f.shape[0], img_f.shape[1], 1)
+        i_f = di_f[:, :, 1].reshape(img_f.shape[0], img_f.shape[1], 1)
+        m_f = np.fromfile(forward_m_path, dtype=np.bool).reshape(img_f.shape[0],
+                                                           img_f.shape[1],
+                                                           1)
+
+        img_l = cv2.imread(left_im_path)  # BGR
+        di_l = np.fromfile(left_di_path, dtype=np.float16).reshape(
+            img_l.shape[0],
+            img_l.shape[1],
+            2)
+        d_l = di_l[:, :, 0].reshape(img_l.shape[0], img_l.shape[1], 1)
+        i_l = di_l[:, :, 1].reshape(img_l.shape[0], img_l.shape[1], 1)
+        m_l = np.fromfile(left_m_path, dtype=np.bool).reshape(img_l.shape[0],
+                                                                 img_l.shape[1],
+                                                                 1)
+
+        img_r = cv2.imread(right_im_path)  # BGR
+        di_r = np.fromfile(right_di_path, dtype=np.float16).reshape(
+            img_r.shape[0],
+            img_r.shape[1],
+            2)
+        d_r = di_r[:, :, 0].reshape(img_r.shape[0], img_r.shape[1], 1)
+        i_r = di_r[:, :, 1].reshape(img_r.shape[0], img_r.shape[1], 1)
+        m_r = np.fromfile(right_m_path, dtype=np.bool).reshape(img_r.shape[0],
+                                                                 img_r.shape[1],
+                                                                 1)
+        assert img_f is not None, 'Forward image Not Found ' + forward_im_path
+        assert img_l is not None, 'Left image Not Found ' + left_im_path
+        assert img_r is not None, 'Right image Not Found ' + right_im_path
+        # print('image %g/%g %s: ' % (self.count, self.nf, im_path), end='')
+
+        img_f = img_f[:, :, ::-1]
+        img_f0 = np.concatenate((img_f, d_f, m_f), axis=-1)
+        img_l = img_l[:, :, ::-1]
+        img_l0 = np.concatenate((img_l, d_f, m_f), axis=-1)
+        img_r = img_r[:, :, ::-1]
+        img_r0 = np.concatenate((img_r, d_f, m_f), axis=-1)
+
+        # Padded resize
+        img_f = letterbox(img_f0, new_shape=self.img_shape)[0]
+        img_f = img_f.transpose(2, 0, 1)
+        img_l = letterbox(img_l0, new_shape=self.img_shape)[0]
+        img_l = img_l.transpose(2, 0, 1)
+        img_r = letterbox(img_r0, new_shape=self.img_shape)[0]
+        img_r = img_r.transpose(2, 0, 1)
+
+        # Convert
+        img_f = np.ascontiguousarray(img_f)
+        img_l = np.ascontiguousarray(img_l)
+        img_r = np.ascontiguousarray(img_r)
+
+        # cv2.imwrite(path + '.letterbox.jpg', 255 * img.transpose((1, 2, 0))[:, :, ::-1])  # save letterbox image
+        return (forward_im_path, left_im_path, right_im_path), (img_f, img_l, img_r), (img_f0, img_l0, img_r0)
+
+    def __len__(self):
+        return self.nf  # number of files
+
 class LoadImages:  # for inference
     def __init__(self, path, img_size=640, rect=False, stride=32):
         p = str(Path(path))  # os-agnostic
