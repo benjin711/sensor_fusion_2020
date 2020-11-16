@@ -369,11 +369,8 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                  pad=0.0):
         try:
             """Fetch the label paths from the top-level directory given"""
-            self.label_files = sorted(
-                glob.glob(os.path.join(path, '*', 'data', '*', '*_labels', '*.txt')))
-            random.shuffle(self.label_files)
-            if num_samples:
-                self.label_files = self.label_files[:num_samples]
+            with open(path, 'r') as label_f:
+                self.label_files = label_f.read().split('\n')
 
             self.img_files = [
                 x.replace('labels', 'camera_filtered').replace('.txt', '.png')
