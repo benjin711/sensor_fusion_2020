@@ -44,9 +44,8 @@ class BerHu(nn.Module):
                             -delta ** 2.) + delta ** 2
         part2 = part2 / (2. * delta)
 
-        loss = part1 + part2
-        loss = torch.sum(loss)
-        return loss
+        loss_per_box = part1 + part2
+        return loss_per_box
 
 
 # Set printoptions
@@ -525,7 +524,9 @@ def compute_loss(p, targets, model):  # predictions, targets, model
             # with open('targets.txt', 'a') as file:
             #     [file.write('%11.5g ' * 4 % tuple(x) + '\n') for x in torch.cat((txy[i], twh[i]), 1)]
 
-            ldepth += BHdepth.forward(tdepth[i], pdepth)
+            ldepth_per_box = BHdepth.forward(tdepth[i], pdepth)
+            ldepth += ldepth_per_box.sum() if red == 'sum' else ldepth_per_box.mean()
+
         lobj += BCEobj(pi[..., 5], tobj) * balance[i]  # obj loss
 
     s = 3 / np  # output count scaling
