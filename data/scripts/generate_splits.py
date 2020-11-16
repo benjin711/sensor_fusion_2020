@@ -8,14 +8,24 @@ import random
 import argparse
 
 def generate_splits(cfg):
-    base_dir, output_dir, train_ratio, val_ratio, test_ratio, total_num = \
+    base_dir, output_dir, train_ratio, val_ratio, test_ratio, total_num, all_available = \
     cfg.base_dir, cfg.output_dir, cfg.train_ratio, cfg.val_ratio, \
-    cfg.test_ratio, cfg.total_num
+    cfg.test_ratio, cfg.total_num, cfg.all_available
 
-    label_files = sorted(glob(os.path.join(base_dir, '*', 'data', '*',
+    if all_available:
+        forward_labels = glob(os.path.join(base_dir, '*', 'data', '*',
+                                           'forward_labels', '*.txt'))
+        label_files = []
+        for label in forward_labels:
+            if os.path.exists(label.replace('forward', 'left')) and os.path.exists(label.replace('forward', 'right')):
+                label_files.append(label)
+        print(f"{len(label_files)} synchronized labels found.")
+    else:
+        label_files = sorted(glob(os.path.join(base_dir, '*', 'data', '*',
                                                 '*_labels', '*.txt')))
-    random.shuffle(label_files)
+        print(f"{len(label_files)} mono labels found.")
 
+    random.shuffle(label_files)
     if 0 < total_num < len(label_files):
         label_files = label_files[:total_num]
 
@@ -53,6 +63,8 @@ if __name__ == '__main__':
     parser.add_argument('--test-ratio', type=float, default=0.1,
                         help='Percentage of labels to use for testing (<=1.00)')
     parser.add_argument('--total-num', type=int, default=-1, help='Total number of labels to use. Default is all.')
+    parser.add_argument('--all-available', action='store-true', help='Only store labels that are available for all three cameras.'
+                                                                     'Forward label is written to the txt files.')
     args = parser.parse_args()
     generate_splits(args)
 
