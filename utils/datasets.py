@@ -371,6 +371,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             """Fetch the label paths from the top-level directory given"""
             with open(path, 'r') as label_f:
                 self.label_files = label_f.read().split('\n')
+                self.label_files.pop() # Remove empty line
 
             self.img_files = [
                 x.replace('labels', 'camera_filtered').replace('.txt', '.png')
