@@ -1,0 +1,1 @@
+/cluster/scratch/cafang/sensor_fusion_data/2020-07-05_tuggen/data/autocross_2020-07-05-12-35-31/right_labels/00000669.txt
