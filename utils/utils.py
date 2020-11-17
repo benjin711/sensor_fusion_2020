@@ -474,7 +474,8 @@ def compute_loss(p, targets, model):  # predictions, targets, model
     # Define criteria
     BCEcls = nn.BCEWithLogitsLoss(pos_weight=ft([h['cls_pw']]), reduction=red).to(device)
     BCEobj = nn.BCEWithLogitsLoss(pos_weight=ft([h['obj_pw']]), reduction=red).to(device)
-    BHdepth = BerHu().to(device)
+    # BHdepth = BerHu().to(device)
+    BHdepth = nn.SmoothL1Loss(reduction=red).to(device)
 
     # class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
     cp, cn = smooth_BCE(eps=0.0)
@@ -524,9 +525,9 @@ def compute_loss(p, targets, model):  # predictions, targets, model
             # with open('targets.txt', 'a') as file:
             #     [file.write('%11.5g ' * 4 % tuple(x) + '\n') for x in torch.cat((txy[i], twh[i]), 1)]
 
-            ldepth_per_box = BHdepth.forward(tdepth[i], pdepth)
-            ldepth += ldepth_per_box.sum() if red == 'sum' else ldepth_per_box.mean()
-
+            # ldepth_per_box = BHdepth.forward(tdepth[i], pdepth)
+            # ldepth += ldepth_per_box.sum() if red == 'sum' else ldepth_per_box.mean()
+            ldepth += BHdepth.forward(pdepth, tdepth[i])
         lobj += BCEobj(pi[..., 5], tobj) * balance[i]  # obj loss
 
     s = 3 / np  # output count scaling
