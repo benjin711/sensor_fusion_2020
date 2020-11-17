@@ -354,9 +354,6 @@ def train(hyp, tb_writer, opt, device):
                                                  single_cls=opt.single_cls,
                                                  dataloader=testloader,
                                                  save_dir=log_dir)
-                results = list(results)
-                results[4] /= hyp['depth'] # Rescale mean depth loss
-                results = tuple(results)
 
                 # Write
                 with open(results_file, 'a') as f:

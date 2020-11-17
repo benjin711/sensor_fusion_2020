@@ -78,8 +78,8 @@ def test(data,
     seen = 0
     names = model.names if hasattr(model, 'names') else model.module.names
     coco91class = coco80_to_coco91_class()
-    s = ('%20s' + '%12s' * 6) % ('Class', 'Images', 'Targets', 'P', 'R', 'mAP@.5', 'mAP@.5:.95')
-    p, r, f1, mp, mr, map50, map, t0, t1 = 0., 0., 0., 0., 0., 0., 0., 0., 0.
+    s = ('%20s' + '%12s' * 7) % ('Class', 'Images', 'Targets', 'P', 'R', 'mAP@.5', 'mAP@.5:.95', 'Depth Error')
+    p, r, f1, mp, mr, map50, map, t0, t1, depth_err = 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.
     loss = torch.zeros(4, device=device)
     total_boxes = torch.zeros(1, device=device)
     jdict, stats, ap, ap_class = [], [], [], []
@@ -104,7 +104,7 @@ def test(data,
 
             # Compute loss
             if training:  # if model has loss hyperparameters
-                _, loss_items = compute_loss([x.float() for x in train_out], targets, model)  # GIoU, obj, cls, depth
+                tmp, loss_items = compute_loss([x.float() for x in train_out], targets, model)  # GIoU, obj, cls, depth
                 loss += loss_items[:4]
 
             # Run NMS
@@ -232,8 +232,8 @@ def test(data,
         nt = torch.zeros(1)
 
     # Print results
-    pf = '%20s' + '%12.3g' * 6  # print format
-    print(pf % ('all', seen, nt.sum(), mp, mr, map50, map))
+    pf = '%20s' + '%12.3g' * 7  # print format
+    print(pf % ('all', seen, nt.sum(), mp, mr, map50, map, np.mean(np.array(depth_stats['depth_error']))))
 
     # Print results per class
     if verbose and nc > 1 and len(stats):
