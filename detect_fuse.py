@@ -8,7 +8,7 @@ import torch.backends.cudnn as cudnn
 from models.experimental import *
 from utils.datasets import *
 from utils.utils import *
-from preprocessing.preprocessing.utils.utils import load_camera_calib, load_stereo_calib
+from preprocessing.preprocessing.utils.utils import load_camera_calib, load_stereo_calib, load_mrh_transform
 from utils import icp2d
 
 def detect(save_img=False):
@@ -39,13 +39,9 @@ def detect(save_img=False):
     colors = [[0, 0, 255], [255, 255, 0]]
 
     # Load camera calibration
-    calibs = {'forward': load_camera_calib('preprocessing/preprocessing/resources/forward.yaml'),
-              'left': load_stereo_calib(
-                  'preprocessing/preprocessing/resources/forward.yaml',
-                  'preprocessing/preprocessing/resources/left_forward.yaml'),
-              'right': load_stereo_calib(
-                  'preprocessing/preprocessing/resources/forward.yaml',
-                  'preprocessing/preprocessing/resources/right_forward.yaml')}
+    calibs = {'forward': None,
+              'left': None,
+              'right': None}
     forward_hfov = 40
 
     # Run inference
@@ -88,6 +84,15 @@ def detect(save_img=False):
         pred_l = non_max_suppression(pred_l, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms)
         pred_r = non_max_suppression(pred_r, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms)
 
+        # Load transformation from each camera to the MRH frame
+        img_dir, _ = os.path.split(path_f)
+        calibs['forward'] = load_camera_calib(os.path.join(img_dir, '..', '..', '..', 'static_transformations', 'forward.yaml'))
+        calibs['forward']['T'] = load_mrh_transform(os.path.join(img_dir, '..', '..', '..', 'static_transformations', 'extrinsics_mrh_forward.yaml'), invert=True)
+        calibs['left'] = load_camera_calib(os.path.join(img_dir, '..', '..', '..', 'static_transformations', 'left.yaml'))
+        calibs['left']['T'] = load_mrh_transform(os.path.join(img_dir, '..', '..', '..', 'static_transformations', 'extrinsics_mrh_left.yaml'), invert=True)
+        calibs['right'] = load_camera_calib(os.path.join(img_dir, '..', '..', '..', 'static_transformations', 'right.yaml'))
+        calibs['right']['T'] = load_mrh_transform(os.path.join(img_dir, '..', '..', '..', 'static_transformations', 'extrinsics_mrh_right.yaml'), invert=True)
+
         # DEBUG : Load original images for visualizing boxes
         img_f_raw = cv2.imread(path_f)
         img_l_raw = cv2.imread(path_l)
@@ -113,8 +118,8 @@ def detect(save_img=False):
             z_tip_x = np.multiply(depth_tip, np.cos(tx_tip))
             y_tip = np.multiply(depth_tip, np.sin(ty_tip)).reshape((-1, 1))
             z_tip_y = np.multiply(depth_tip, np.cos(ty_tip))
-            # z_tip = 0.5*(z_tip_x + z_tip_y).reshape((-1, 1))
-            z_tip = z_tip_x.reshape((-1, 1))
+            z_tip = 0.5*(z_tip_x + z_tip_y).reshape((-1, 1))
+            # z_tip = z_tip_x.reshape((-1, 1))
             xyz_f = np.concatenate([x_tip, y_tip, z_tip], axis=1)
 
             # Draw cones
@@ -143,8 +148,8 @@ def detect(save_img=False):
             z_tip_x = np.multiply(depth_tip, np.cos(tx_tip))
             y_tip = np.multiply(depth_tip, np.sin(ty_tip)).reshape((-1, 1))
             z_tip_y = np.multiply(depth_tip, np.cos(ty_tip))
-            # z_tip = 0.5*(z_tip_x + z_tip_y).reshape((-1, 1))
-            z_tip = z_tip_x.reshape((-1, 1))
+            z_tip = 0.5*(z_tip_x + z_tip_y).reshape((-1, 1))
+            # z_tip = z_tip_x.reshape((-1, 1))
             xyz_l = np.concatenate([x_tip, y_tip, z_tip], axis=1)
 
             for *xyxy, conf, cls, depth in det:
@@ -172,8 +177,8 @@ def detect(save_img=False):
             z_tip_x = np.multiply(depth_tip, np.cos(tx_tip))
             y_tip = np.multiply(depth_tip, np.sin(ty_tip)).reshape((-1, 1))
             z_tip_y = np.multiply(depth_tip, np.cos(ty_tip))
-            # z_tip = 0.5*(z_tip_x + z_tip_y).reshape((-1, 1))
-            z_tip = z_tip_x.reshape((-1, 1))
+            z_tip = 0.5*(z_tip_x + z_tip_y).reshape((-1, 1))
+            # z_tip = z_tip_x.reshape((-1, 1))
             xyz_r = np.concatenate([x_tip, y_tip, z_tip], axis=1)
 
             for *xyxy, conf, cls, depth in det:
@@ -188,44 +193,51 @@ def detect(save_img=False):
         cv2.waitKey(0)
 
         # Transform cones to forward camera frame
-        xyz_l = (calibs['left']['rotation_matrix'] @ xyz_l.T + calibs['left']['translation_vector']).T
-        xyz_r = (calibs['right']['rotation_matrix'] @ xyz_r.T + calibs['right']['translation_vector']).T
+        xyz_f_homo = np.concatenate([xyz_f, np.ones((xyz_f.shape[0], 1))], axis=1)
+        xyz_l_homo = np.concatenate([xyz_l, np.ones((xyz_l.shape[0], 1))],
+                                    axis=1)
+        xyz_r_homo = np.concatenate([xyz_r, np.ones((xyz_r.shape[0], 1))],
+                                    axis=1)
+        xyz_f_homo = (calibs['forward']['T'] @ xyz_f_homo.T).T
+        xyz_l_homo = (calibs['left']['T'] @ xyz_l_homo.T).T
+        xyz_r_homo = (calibs['right']['T'] @ xyz_r_homo.T).T
+        xyz_f = xyz_f_homo[:, :3]
+        xyz_l = xyz_l_homo[:, :3]
+        xyz_r = xyz_r_homo[:, :3]
 
         plt.figure()
-        plt.scatter(xyz_l[:, 0], xyz_l[:, 2])
-        plt.title('Left Cones')
-        plt.scatter(xyz_f[:, 0], xyz_f[:, 2])
-        plt.title('Forward Cones')
-        plt.scatter(xyz_r[:, 0], xyz_r[:, 2])
-        plt.title('Right Cones')
+        plt.scatter(-xyz_l[:, 0], -xyz_l[:, 1])
+        plt.scatter(-xyz_f[:, 0], -xyz_f[:, 1])
+        plt.scatter(-xyz_r[:, 0], -xyz_r[:, 1])
+        plt.title('Cones')
         plt.xlabel('X (m)')
-        plt.ylabel('Z (m)')
+        plt.ylabel('-Y (m)')
         plt.legend(["Left", "Forward", "Right"])
         plt.show()
 
-        # Only use points within +/- 80 deg for correspondence
-        angle_l = np.rad2deg(np.arctan2(xyz_l[:, 0], xyz_l[:, 2]))
-        mask_l = np.logical_and(angle_l < forward_hfov, angle_l > -forward_hfov)
-        mask_l = np.logical_and(mask_l, xyz_l[:, 2] < 30)
-        angle_r = np.rad2deg(np.arctan2(xyz_r[:, 0], xyz_r[:, 2]))
-        mask_r = np.logical_and(angle_r < forward_hfov, angle_r > -forward_hfov)
-        mask_r = np.logical_and(mask_r, xyz_r[:, 2] < 30)
-        T_l = icp2d.icp(xyz_f[:, [0, 2]], xyz_l[:, [0, 2]][mask_l])
-        T_r = icp2d.icp(xyz_f[:, [0, 2]], xyz_r[:, [0, 2]][mask_r])
-
-        xyz_l[:, [0, 2]] = (T_l @ np.concatenate([xyz_l[:, [0, 2]], np.zeros((xyz_l.shape[0], 1))], axis=1).T).T
-        xyz_r[:, [0, 2]] = (T_r @ np.concatenate(
-            [xyz_r[:, [0, 2]], np.zeros((xyz_r.shape[0], 1))], axis=1).T).T
-
-        plt.figure()
-        plt.scatter(xyz_l[:, 0], xyz_l[:, 2])
-        plt.scatter(xyz_f[:, 0], xyz_f[:, 2])
-        plt.scatter(xyz_r[:, 0], xyz_r[:, 2])
-        plt.xlabel('X (m)')
-        plt.ylabel('Z (m)')
-        plt.legend(["Left", "Forward", "Right"])
-        plt.title("Merged Cones")
-        plt.show()
+        # # Only use points within +/- 80 deg for correspondence
+        # angle_l = np.rad2deg(np.arctan2(xyz_l[:, 0], xyz_l[:, 2]))
+        # mask_l = np.logical_and(angle_l < forward_hfov, angle_l > -forward_hfov)
+        # mask_l = np.logical_and(mask_l, xyz_l[:, 2] < 30)
+        # angle_r = np.rad2deg(np.arctan2(xyz_r[:, 0], xyz_r[:, 2]))
+        # mask_r = np.logical_and(angle_r < forward_hfov, angle_r > -forward_hfov)
+        # mask_r = np.logical_and(mask_r, xyz_r[:, 2] < 30)
+        # T_l = icp2d.icp(xyz_f[:, [0, 2]], xyz_l[:, [0, 2]][mask_l])
+        # T_r = icp2d.icp(xyz_f[:, [0, 2]], xyz_r[:, [0, 2]][mask_r])
+        #
+        # xyz_l[:, [0, 2]] = (T_l @ np.concatenate([xyz_l[:, [0, 2]], np.zeros((xyz_l.shape[0], 1))], axis=1).T).T
+        # xyz_r[:, [0, 2]] = (T_r @ np.concatenate(
+        #     [xyz_r[:, [0, 2]], np.zeros((xyz_r.shape[0], 1))], axis=1).T).T
+        #
+        # plt.figure()
+        # plt.scatter(xyz_l[:, 0], xyz_l[:, 2])
+        # plt.scatter(xyz_f[:, 0], xyz_f[:, 2])
+        # plt.scatter(xyz_r[:, 0], xyz_r[:, 2])
+        # plt.xlabel('X (m)')
+        # plt.ylabel('Z (m)')
+        # plt.legend(["Left", "Forward", "Right"])
+        # plt.title("Merged Cones")
+        # plt.show()
 
 
 if __name__ == '__main__':
