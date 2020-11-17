@@ -118,8 +118,8 @@ def detect(save_img=False):
             z_tip_x = np.multiply(depth_tip, np.cos(tx_tip))
             y_tip = np.multiply(depth_tip, np.sin(ty_tip)).reshape((-1, 1))
             z_tip_y = np.multiply(depth_tip, np.cos(ty_tip))
-            z_tip = 0.5*(z_tip_x + z_tip_y).reshape((-1, 1))
-            # z_tip = z_tip_x.reshape((-1, 1))
+            # z_tip = 0.5*(z_tip_x + z_tip_y).reshape((-1, 1))
+            z_tip = z_tip_x.reshape((-1, 1))
             xyz_f = np.concatenate([x_tip, y_tip, z_tip], axis=1)
 
             # Draw cones
@@ -148,8 +148,8 @@ def detect(save_img=False):
             z_tip_x = np.multiply(depth_tip, np.cos(tx_tip))
             y_tip = np.multiply(depth_tip, np.sin(ty_tip)).reshape((-1, 1))
             z_tip_y = np.multiply(depth_tip, np.cos(ty_tip))
-            z_tip = 0.5*(z_tip_x + z_tip_y).reshape((-1, 1))
-            # z_tip = z_tip_x.reshape((-1, 1))
+            # z_tip = 0.5*(z_tip_x + z_tip_y).reshape((-1, 1))
+            z_tip = z_tip_x.reshape((-1, 1))
             xyz_l = np.concatenate([x_tip, y_tip, z_tip], axis=1)
 
             for *xyxy, conf, cls, depth in det:
@@ -177,8 +177,8 @@ def detect(save_img=False):
             z_tip_x = np.multiply(depth_tip, np.cos(tx_tip))
             y_tip = np.multiply(depth_tip, np.sin(ty_tip)).reshape((-1, 1))
             z_tip_y = np.multiply(depth_tip, np.cos(ty_tip))
-            z_tip = 0.5*(z_tip_x + z_tip_y).reshape((-1, 1))
-            # z_tip = z_tip_x.reshape((-1, 1))
+            # z_tip = 0.5*(z_tip_x + z_tip_y).reshape((-1, 1))
+            z_tip = z_tip_x.reshape((-1, 1))
             xyz_r = np.concatenate([x_tip, y_tip, z_tip], axis=1)
 
             for *xyxy, conf, cls, depth in det:
