@@ -33,7 +33,7 @@ def main():
 
         extractor = RosbagExtractor(cfg)
 
-        ret = extractor.init_file_structure()
+        ret = extractor.init_file_structure(cfg.topics)
 
         if ret:
             for topic in cfg.topics:
