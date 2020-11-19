@@ -2,7 +2,7 @@ import argparse
 from copy import deepcopy
 
 from models.experimental import *
-
+from utils.datasets import resize_dm_torch
 
 class Detect(nn.Module):
     def __init__(self, nc=80, anchors=(), ch=()):  # detection layer
@@ -24,10 +24,22 @@ class Detect(nn.Module):
         # x = x.copy()  # for profiling
         z = []  # inference output
         self.training |= self.export
+
+        if depth is not None:
+            if len(depth.shape) == 3:
+                depth = depth.unsqueeze(0)
+
         for i in range(self.nl):
-            # layer_to_detect = x[i]
-            # print(layer_to_detect).shape
-            x[i] = self.m[i](x[i])  # conv
+            layer_to_detect = x[i]
+#            print(layer_to_detect.shape)
+            if depth is not None:
+                scale = layer_to_detect.shape[-1] / depth.shape[-1]
+                d_scaled = resize_dm_torch(depth, scale)
+                layer_to_detect = torch.cat((layer_to_detect, d_scaled), dim=-3)
+#            print(d_scaled.shape)
+#            print(layer_to_detect.shape)
+#            exit()
+            x[i] = self.m[i](layer_to_detect)  # conv
             bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
             x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
 
@@ -116,6 +128,9 @@ class Model(nn.Module):
 
     def forward_once(self, x, profile=False):
         # Split RGB and dm. Conv each independently first.
+#        depth = x[:, 3, :, :]
+#        print(depth.shape)
+##        exit()
         input_rgb = x[:, :3, :, :]
         input_dm = x[:, 3:, :, :]
 
@@ -140,9 +155,12 @@ class Model(nn.Module):
                 dt.append((torch_utils.time_synchronized() - t) * 100)
                 print('%10.1f%10.0f%10.1fms %-40s' % (o, m.np, dt[-1], m.type))
 
-            x = m(x)  # run
+            if isinstance(m, Detect):
+                m(x, input_dm)
+            else:
+                x = m(x)  # run
             y.append(x if m.i in self.save else None)  # save output
-
+#        exit()
         if profile:
             print('%.1fms total' % sum(dt))
         return x
@@ -232,6 +250,8 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             args.append([ch[x + 1] for x in f])
             if isinstance(args[1], int):  # number of anchors
                 args[1] = [list(range(args[1] * 2))] * len(f)
+            args[-1] = [x+2 for x in args[-1]]
+
         else:
             c2 = ch[f]
 

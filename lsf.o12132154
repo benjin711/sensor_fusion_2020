@@ -1,0 +1,110 @@
+Sender: LSF System <lsfadmin@lo-g2-008>
+Subject: Job 12132154: <python3 train.py --batch-size 4 --data data/amz_tiny_full.yaml --noautoanchor --cfg models/yolov4m-rgbd.yaml> in cluster <leonhard> Exited
+
+Job <python3 train.py --batch-size 4 --data data/amz_tiny_full.yaml --noautoanchor --cfg models/yolov4m-rgbd.yaml> was submitted from host <lo-login-01> by user <jzhong> in cluster <leonhard> at Thu Nov 19 23:06:55 2020
+Job was executed on host(s) <20*lo-g2-008>, in queue <gpu.4h>, as user <jzhong> in cluster <leonhard> at Thu Nov 19 23:07:21 2020
+</cluster/home/jzhong> was used as the home directory.
+</cluster/home/jzhong/yolo3d> was used as the working directory.
+Started at Thu Nov 19 23:07:21 2020
+Terminated at Thu Nov 19 23:08:19 2020
+Results reported at Thu Nov 19 23:08:19 2020
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+python3 train.py --batch-size 4 --data data/amz_tiny_full.yaml --noautoanchor --cfg models/yolov4m-rgbd.yaml
+------------------------------------------------------------
+
+Exited with exit code 1.
+
+Resource usage summary:
+
+    CPU time :                                   51.68 sec.
+    Max Memory :                                 6224 MB
+    Average Memory :                             2637.75 MB
+    Total Requested Memory :                     90000.00 MB
+    Delta Memory :                               83776.00 MB
+    Max Swap :                                   -
+    Max Processes :                              3
+    Max Threads :                                9
+    Run time :                                   84 sec.
+    Turnaround time :                            84 sec.
+
+The output (if any) follows:
+
+2020-11-19 23:07:26.472926: I tensorflow/stream_executor/platform/default/dso_loader.cc:48] Successfully opened dynamic library libcudart.so.10.1
+  0%|          | 0/8529 [00:00<?, ?it/s]Scanning labels /cluster/scratch/cafang/sensor_fusion_data/2020-08-02_tuggen/data/autocross_2020-08-02-12-01-19/left_labels.cache (1446 found, 0 missing, 0 empty, 259 duplicate, for 8529 images):  17%|█▋        | 1446/8529 [00:00<00:00, 14451.92it/s]Scanning labels /cluster/scratch/cafang/sensor_fusion_data/2020-08-02_tuggen/data/autocross_2020-08-02-12-01-19/left_labels.cache (2992 found, 0 missing, 0 empty, 538 duplicate, for 8529 images):  35%|███▌      | 2992/8529 [00:00<00:00, 14740.01it/s]Scanning labels /cluster/scratch/cafang/sensor_fusion_data/2020-08-02_tuggen/data/autocross_2020-08-02-12-01-19/left_labels.cache (4616 found, 0 missing, 0 empty, 818 duplicate, for 8529 images):  54%|█████▍    | 4616/8529 [00:00<00:00, 15157.88it/s]Scanning labels /cluster/scratch/cafang/sensor_fusion_data/2020-08-02_tuggen/data/autocross_2020-08-02-12-01-19/left_labels.cache (6307 found, 0 missing, 0 empty, 1103 duplicate, for 8529 images):  74%|███████▍  | 6307/8529 [00:00<00:00, 15641.23it/s]Scanning labels /cluster/scratch/cafang/sensor_fusion_data/2020-08-02_tuggen/data/autocross_2020-08-02-12-01-19/left_labels.cache (7998 found, 0 missing, 0 empty, 1415 duplicate, for 8529 images):  94%|█████████▍| 7998/8529 [00:00<00:00, 15999.82it/s]Scanning labels /cluster/scratch/cafang/sensor_fusion_data/2020-08-02_tuggen/data/autocross_2020-08-02-12-01-19/left_labels.cache (8529 found, 0 missing, 0 empty, 1506 duplicate, for 8529 images): 100%|██████████| 8529/8529 [00:00<00:00, 16031.05it/s]
+  0%|          | 0/1067 [00:00<?, ?it/s]Scanning labels /cluster/scratch/cafang/sensor_fusion_data/2020-07-08_duebendorf/data/autocross_2020-07-08-09-53-46/forward_labels.cache (1067 found, 0 missing, 0 empty, 194 duplicate, for 1067 images): 100%|██████████| 1067/1067 [00:00<00:00, 13678.64it/s]Apex recommended for faster mixed precision training: https://github.com/NVIDIA/apex
+Using CUDA device0 _CudaDeviceProperties(name='GeForce RTX 2080 Ti', total_memory=10989MB)
+
+Namespace(batch_size=4, bucket='', cache_images=False, cfg='models/yolov4m-rgbd.yaml', data='data/amz_tiny_full.yaml', device='', epochs=300, evolve=False, hyp='', img_size=[1280, 1280], local_rank=-1, multi_scale=False, name='', noautoanchor=True, nosave=False, notest=False, rect=False, resume=False, single_cls=False, sync_bn=False, total_batch_size=4, weights='', world_size=1)
+Start Tensorboard with "tensorboard --logdir=runs", view at http://localhost:6006/
+Hyperparameters {'optimizer': 'SGD', 'lr0': 0.01, 'momentum': 0.937, 'weight_decay': 0.0005, 'depth': 5e-07, 'giou': 0.05, 'cls': 0.5, 'cls_pw': 1.0, 'obj': 1.0, 'obj_pw': 1.0, 'iou_t': 0.2, 'anchor_t': 4.0, 'fl_gamma': 0.0, 'hsv_h': 0.015, 'hsv_s': 0.7, 'hsv_v': 0.4, 'degrees': 0.0, 'translate': 0.0, 'scale': 0.5, 'shear': 0.0}
+Overriding models/yolov4m-rgbd.yaml nc=80 with nc=2
+
+                 from  n    params  module                                  arguments                     
+  0                -1  1      6960  models.common.Conv                      [32, 24, 3, 1]                
+  1                -1  1     10464  models.common.Conv                      [24, 48, 3, 2]                
+  2                -1  1     11664  models.common.Bottleneck                [48, 48]                      
+  3                -1  1     41664  models.common.Conv                      [48, 96, 3, 2]                
+  4                -1  1     44448  models.common.BottleneckCSP             [96, 96, 1]                   
+  5                -1  1    166272  models.common.Conv                      [96, 192, 3, 2]               
+  6                -1  1    546624  models.common.BottleneckCSP             [192, 192, 5]                 
+  7                -1  1    664320  models.common.Conv                      [192, 384, 3, 2]              
+  8                -1  1   2180736  models.common.BottleneckCSP             [384, 384, 5]                 
+  9                -1  1   2655744  models.common.Conv                      [384, 768, 3, 2]              
+ 10                -1  1   5759232  models.common.BottleneckCSP             [768, 768, 3]                 
+ 11                -1  1   4282368  models.common.SPPCSP                    [768, 384, 1]                 
+ 12                -1  1     74112  models.common.Conv                      [384, 192, 1, 1]              
+ 13                -1  1         0  torch.nn.modules.upsampling.Upsample    [None, 2, 'nearest']          
+ 14                 8  1     74112  models.common.Conv                      [384, 192, 1, 1]              
+ 15          [-1, -2]  1         0  models.common.Concat                    [1]                           
+ 16                -1  1    555264  models.common.BottleneckCSP2            [384, 192, 1]                 
+ 17                -1  1     18624  models.common.Conv                      [192, 96, 1, 1]               
+ 18                -1  1         0  torch.nn.modules.upsampling.Upsample    [None, 2, 'nearest']          
+ 19                 6  1     18624  models.common.Conv                      [192, 96, 1, 1]               
+ 20          [-1, -2]  1         0  models.common.Concat                    [1]                           
+ 21                -1  1    139392  models.common.BottleneckCSP2            [192, 96, 1]                  
+ 22                -1  1    166272  models.common.Conv                      [96, 192, 3, 1]               
+ 23                -2  1    166272  models.common.Conv                      [96, 192, 3, 2]               
+ 24          [-1, 16]  1         0  models.common.Concat                    [1]                           
+ 25                -1  1    555264  models.common.BottleneckCSP2            [384, 192, 1]                 
+ 26                -1  1    664320  models.common.Conv                      [192, 384, 3, 1]              
+ 27                -2  1    664320  models.common.Conv                      [192, 384, 3, 2]              
+ 28          [-1, 11]  1         0  models.common.Concat                    [1]                           
+ 29                -1  1   2216448  models.common.BottleneckCSP2            [768, 384, 1]                 
+ 30                -1  1   2655744  models.common.Conv                      [384, 768, 3, 1]              
+ 31      [22, 26, 30]  1     32472  models.yolo.Detect                      [2, [[15, 19, 24, 30, 35, 41], [48, 52, 65, 72, 89, 100], [118, 133, 157, 176, 197, 241]], [194, 386, 770]]
+Using CPU
+
+Model Summary: 266 layers, 2.43725e+07 parameters, 2.43725e+07 gradients
+
+Optimizer groups: 89 .bias, 93 conv.weight, 84 other
+Image sizes 1280 train, 1280 test
+Using 4 dataloader workers
+Starting training for 300 epochs...
+
+  0%|          | 0/2133 [00:00<?, ?it/s]  0%|          | 0/2133 [00:03<?, ?it/s]
+
+     Epoch   gpu_mem      GIoU       obj       cls     depth     total   targets  img_size
+Traceback (most recent call last):
+  File "train.py", line 485, in <module>
+    train(hyp, tb_writer, opt, device)
+  File "train.py", line 298, in train
+    pred = model(imgs)
+  File "/cluster/apps/python/3.8.5_gpu_gcc630/x86_64/lib64/python3.8/site-packages/torch/nn/modules/module.py", line 722, in _call_impl
+    result = self.forward(*input, **kwargs)
+  File "/cluster/home/jzhong/yolo3d/models/yolo.py", line 127, in forward
+    return self.forward_once(x, profile)  # single-scale inference, train
+  File "/cluster/home/jzhong/yolo3d/models/yolo.py", line 161, in forward_once
+    x = m(x)  # run
+  File "/cluster/apps/python/3.8.5_gpu_gcc630/x86_64/lib64/python3.8/site-packages/torch/nn/modules/module.py", line 722, in _call_impl
+    result = self.forward(*input, **kwargs)
+  File "/cluster/home/jzhong/yolo3d/models/common.py", line 34, in forward
+    return self.act(self.bn(self.conv(x)))
+  File "/cluster/apps/python/3.8.5_gpu_gcc630/x86_64/lib64/python3.8/site-packages/torch/nn/modules/module.py", line 722, in _call_impl
+    result = self.forward(*input, **kwargs)
+  File "/cluster/home/jzhong/yolo3d/models/common.py", line 11, in forward
+    return x * torch.nn.functional.softplus(x).tanh()
+RuntimeError: CUDA out of memory. Tried to allocate 150.00 MiB (GPU 0; 10.73 GiB total capacity; 9.15 GiB already allocated; 103.56 MiB free; 9.57 GiB reserved in total by PyTorch)
