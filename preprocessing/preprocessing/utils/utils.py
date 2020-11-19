@@ -64,13 +64,14 @@ def timestamps_within_interval(interval, timestamps):
 
 
 def get_reference_timestamps(data_folder_path):
-    forward_camera_folder = "forward_camera"
+    forward_camera_filtered_folder = "forward_camera_filtered"
 
-    if os.path.exists(data_folder_path, forward_camera_folder,
-                      "timestamps.txt"):
+    if os.path.exists(
+            os.path.join(data_folder_path, forward_camera_filtered_folder,
+                         "timestamps.txt")):
         timestamp_filepaths_dict = {
             "reference_timestamps":
-            os.path.join(data_folder_path, forward_camera_folder,
+            os.path.join(data_folder_path, forward_camera_filtered_folder,
                          "timestamps.txt"),
         }
 
