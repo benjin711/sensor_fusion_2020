@@ -20,11 +20,13 @@ class Detect(nn.Module):
         self.export = False  # onnx export
 
     # [xywh, depth, obj_prob, class_1_prob, class_2_prob, ... class_nc_prob]
-    def forward(self, x):
+    def forward(self, x, depth=None):
         # x = x.copy()  # for profiling
         z = []  # inference output
         self.training |= self.export
         for i in range(self.nl):
+            # layer_to_detect = x[i]
+            # print(layer_to_detect).shape
             x[i] = self.m[i](x[i])  # conv
             bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
             x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
