@@ -3,7 +3,7 @@ import os
 import numpy as np
 import sys
 import cv2
-import open3d
+import open3d as o3d
 
 # Would be good to know which data folders carter is using as test data atm
 
@@ -69,6 +69,7 @@ def match_cone_arrays(cfg):
         t = transformation_file.getNode("t_mtx").mat()
         transformation_file.release()
         T[:3, :3], T[:3, 3] = R, t.reshape(-1)
+        T = np.linalg.inv(T)
 
         # Get ground truth cone arrays in mrh frame
         gt_cone_arrays = []
@@ -147,6 +148,28 @@ def match_cone_arrays(cfg):
 
 def visualize_cone_arrays(cfg):
     cone_arrays_dict = match_cone_arrays(cfg)
+    num_cone_arrays = len(cone_arrays_dict["lidar"])
+
+    pcd_lidar = o3d.geometry.PointCloud()
+    pcd_lidar.points = o3d.utility.Vector3dVector(cone_arrays_dict["lidar"][0])
+    colors = np.ones((num_cone_arrays, 3)).astype(np.float)
+    pcd_lidar.colors = o3d.utility.Vector3dVector(colors)
+
+    pcd_gt_left = o3d.geometry.PointCloud()
+    pcd_gt_left.points = o3d.utility.Vector3dVector(
+        cone_arrays_dict["gt_left"][0][:, 1:])
+    colors = np.ones((num_cone_arrays, 3)).astype(np.float)
+    pcd_gt_left.colors = o3d.utility.Vector3dVector(colors)
+
+    pcd_gt_right = o3d.geometry.PointCloud()
+    pcd_gt_right.points = o3d.utility.Vector3dVector(
+        cone_arrays_dict["gt_right"][0][:, 1:])
+    colors = np.ones((num_cone_arrays, 3)).astype(np.float)
+    pcd_gt_right.colors = o3d.utility.Vector3dVector(colors)
+
+    o3d.visualization.draw_geometries([pcd_lidar, pcd_gt_left, pcd_gt_right])
+
+    print()
 
 
 def calculate_metrics(cfg):
