@@ -16,3 +16,6 @@ venv/
 
 # Pickles
 **.pkl
+
+# Personal Debug Folder
+.debug

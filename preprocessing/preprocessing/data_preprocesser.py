@@ -905,8 +905,8 @@ class DataPreprocesser:
 
         # 1) For every reference timestamp, chose the closest lidar cone array timestamp
         # If none is available put a -1
-        # Result is an array with indices that indicate which timestamp + cone array tuple belong to which reference timestamp
-        # For all cone arrays need original time stamp, reference time stamp
+        # Result is an array with index elements that indicate which timestamp + cone array tuple belong to which reference timestamp
+        # For all cone arrays the original time stamp and the reference time stamp is needed
         indices = []
 
         for counter, reference_timestamp in enumerate(reference_timestamps):
@@ -931,8 +931,7 @@ class DataPreprocesser:
         indices = np.array(indices)
         pos_indices = indices[indices > 0]
         src_timestamps = -1 * np.ones((len(reference_timestamps)))
-        src_timestamps[indices > 0] = lidar_cone_array_timestamps[indices[
-            indices > 0]]
+        src_timestamps[indices > 0] = lidar_cone_array_timestamps[pos_indices]
         dst_timestamps = np.array(reference_timestamps)
         Ts = np.zeros((len(reference_timestamps), 4, 4))
         timestamps_tuple = np.vstack(
@@ -953,13 +952,13 @@ class DataPreprocesser:
             h_lidar_cone_arrays_src[idx, :, :num_cones] = h_lidar_cone_array.T
 
         h_lidar_cone_arrays_dst[indices > 0] = Ts[
-            indices > 0] @ h_lidar_cone_arrays_src[indices[indices > 0]]
+            indices > 0] @ h_lidar_cone_arrays_src[pos_indices]
 
         # Writing transformed cone arrays to file
         for idx in range(h_lidar_cone_arrays_dst.shape[0]):
             h_lidar_cone_array, mask = h_lidar_cone_arrays_dst[
                 idx, :3], h_lidar_cone_arrays_dst[idx, 3].astype(np.bool)
-            lidar_cone_array = (h_lidar_cone_array.T)[mask].T
+            lidar_cone_array = (h_lidar_cone_array.T)[mask]
 
             file_path = os.path.join(dst_folder, str(idx).zfill(8) + ".bin")
 
