@@ -98,7 +98,7 @@ def match_cone_arrays(cfg):
                 (cone_positions, np.ones((cone_positions.shape[0], 1))))
             h_cone_positions = T @ h_cone_positions.T
             gt_cone_array = np.hstack(
-                (cone_types.reshape(-1, 1), h_cone_positions.T))[:, :4]
+                (cone_types.reshape(-1, 1), h_cone_positions.T[:, :3]))
             gt_cone_arrays_dict[camera][
                 gt_cone_array_indices[idx]] = gt_cone_array
 
@@ -111,7 +111,8 @@ def match_cone_arrays(cfg):
     # Get lidar pipeline cone arrays
     lidar_cone_arrays = []
 
-    lidar_cone_array_folder = os.path.join(data_folder, "lidar_cone_arrays")
+    lidar_cone_array_folder = os.path.join(data_folder,
+                                           "lidar_cone_arrays_filtered")
     lidar_cone_array_files = []
     for (_, _, current_files) in os.walk(lidar_cone_array_folder):
         lidar_cone_array_files.extend(current_files)
@@ -152,22 +153,24 @@ def visualize_cone_arrays(cfg):
 
     pcd_lidar = o3d.geometry.PointCloud()
     pcd_lidar.points = o3d.utility.Vector3dVector(cone_arrays_dict["lidar"][0])
-    colors = np.ones((num_cone_arrays, 3)).astype(np.float)
-    pcd_lidar.colors = o3d.utility.Vector3dVector(colors)
+    pcd_lidar.paint_uniform_color([1.0, 0.1, 0.1])
 
     pcd_gt_left = o3d.geometry.PointCloud()
     pcd_gt_left.points = o3d.utility.Vector3dVector(
         cone_arrays_dict["gt_left"][0][:, 1:])
-    colors = np.ones((num_cone_arrays, 3)).astype(np.float)
-    pcd_gt_left.colors = o3d.utility.Vector3dVector(colors)
+    pcd_gt_left.paint_uniform_color([0.1, 0.9, 0.1])
 
     pcd_gt_right = o3d.geometry.PointCloud()
     pcd_gt_right.points = o3d.utility.Vector3dVector(
         cone_arrays_dict["gt_right"][0][:, 1:])
-    colors = np.ones((num_cone_arrays, 3)).astype(np.float)
-    pcd_gt_right.colors = o3d.utility.Vector3dVector(colors)
+    pcd_gt_right.paint_uniform_color([0.1, 0.1, 0.9])
 
-    o3d.visualization.draw_geometries([pcd_lidar, pcd_gt_left, pcd_gt_right])
+    # Coordinate Frame
+    mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
+        size=0.6, origin=[0, 0, 0])
+
+    o3d.visualization.draw_geometries(
+        [pcd_lidar, pcd_gt_left, pcd_gt_right, mesh_frame])
 
     print()
 

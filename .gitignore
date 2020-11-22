@@ -22,3 +22,6 @@ venv/
 
 # Generated
 runs
+
+# Personal Debug Folder
+.debug
