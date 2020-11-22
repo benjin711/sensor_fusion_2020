@@ -126,6 +126,8 @@ class EgomotionCompensator:
             Ts = T_ego_mrh @ T_wor_ego @ T_ego_wor @ T_mrh_ego
         elif src_frame == "egomotion" and dst_frame == "mrh_lidar":
             Ts = T_ego_mrh @ T_wor_ego @ T_ego_wor
+        elif src_frame == "egomotion" and dst_frame == "egomotion":
+            Ts = T_wor_ego @ T_ego_wor
         else:
             print(
                 "Combination of source target frame has not been implemented yet."

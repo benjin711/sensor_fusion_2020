@@ -937,7 +937,7 @@ class DataPreprocesser:
         timestamps_tuple = np.vstack(
             (src_timestamps[indices > 0], dst_timestamps[indices > 0])).T
         Ts[indices > 0] = self.egomotion_compensator.get_transformations(
-            timestamps_tuple, src_frame="egomotion", dst_frame="mrh_lidar")
+            timestamps_tuple, src_frame="egomotion", dst_frame="egomotion")
         MAX_NUM_CONES = 100
         h_lidar_cone_arrays_src = np.zeros(
             (lidar_cone_array_timestamps.shape[0], 4, MAX_NUM_CONES))
