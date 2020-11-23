@@ -26,9 +26,9 @@ hyp = {'optimizer': 'SGD',  # ['adam', 'SGD', None] if none, default is SGD
        'lr0': 0.01,  # initial learning rate (SGD=1E-2, Adam=1E-3)
        'momentum': 0.937,  # SGD momentum/Adam beta1
        'weight_decay': 5e-4,  # optimizer weight decay
-       'depth': 5e-7, # depth loss gain TODO: tune it, or learn it
+       'depth': 1e-2, # depth loss gain TODO: tune it, or learn it
        'giou': 0.05,  # giou loss gain
-       'cls': 0.5,  # cls loss gain
+       'cls': 5,  # cls loss gain
        'cls_pw': 1.0,  # cls BCELoss positive_weight
        'obj': 1.0,  # obj loss gain (*=img_size/320 if img_size != 320)
        'obj_pw': 1.0,  # obj BCELoss positive_weight

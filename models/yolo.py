@@ -30,16 +30,12 @@ class Detect(nn.Module):
                 depth = depth.unsqueeze(0)
 
         for i in range(self.nl):
-            layer_to_detect = x[i]
-#            print(layer_to_detect.shape)
             if depth is not None:
-                scale = layer_to_detect.shape[-1] / depth.shape[-1]
+                scale = x[i].shape[-1] / depth.shape[-1]
                 d_scaled = resize_dm_torch(depth, scale)
-                layer_to_detect = torch.cat((layer_to_detect, d_scaled), dim=-3)
-#            print(d_scaled.shape)
-#            print(layer_to_detect.shape)
-#            exit()
-            x[i] = self.m[i](layer_to_detect)  # conv
+                x[i] = torch.cat((x[i], d_scaled), dim=-3)
+
+            x[i] = self.m[i](x[i])  # conv
             bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
             x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
 
@@ -128,9 +124,6 @@ class Model(nn.Module):
 
     def forward_once(self, x, profile=False):
         # Split RGB and dm. Conv each independently first.
-#        depth = x[:, 3, :, :]
-#        print(depth.shape)
-##        exit()
         input_rgb = x[:, :3, :, :]
         input_dm = x[:, 3:, :, :]
 
@@ -156,11 +149,11 @@ class Model(nn.Module):
                 print('%10.1f%10.0f%10.1fms %-40s' % (o, m.np, dt[-1], m.type))
 
             if isinstance(m, Detect):
-                m(x, input_dm)
+                x = m(x, input_dm)
             else:
                 x = m(x)  # run
             y.append(x if m.i in self.save else None)  # save output
-#        exit()
+
         if profile:
             print('%.1fms total' % sum(dt))
         return x
