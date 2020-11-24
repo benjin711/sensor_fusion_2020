@@ -56,6 +56,9 @@ def main():
         if cfg.generate_dim:
             data_preprocesser_instance.generate_dim()
 
+        if cfg.match_lidar_cone_arrays:
+            data_preprocesser_instance.match_lidar_cone_arrays()
+
 
 if __name__ == "__main__":
     main()

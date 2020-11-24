@@ -100,7 +100,7 @@ class EgomotionCompensator:
         # Write the point cloud back to file
         write_point_cloud(point_cloud_file, point_cloud)
 
-    def get_transformations(self, timestamp_tuples):
+    def get_transformations(self, timestamp_tuples, src_frame, dst_frame):
         # Input is a numpy array where each element is a tuple of timestamps
         # Output is a numpy array of the corresponding transformations T
         T_mrh_ego = self.T["mrh_lidar_to_egomotion"]
@@ -122,6 +122,16 @@ class EgomotionCompensator:
 
         T_ego_mrh = np.linalg.inv(T_mrh_ego)
 
-        Ts = T_ego_mrh @ T_wor_ego @ T_ego_wor @ T_mrh_ego
+        if src_frame == "mrh_lidar" and dst_frame == "mrh_lidar":
+            Ts = T_ego_mrh @ T_wor_ego @ T_ego_wor @ T_mrh_ego
+        elif src_frame == "egomotion" and dst_frame == "mrh_lidar":
+            Ts = T_ego_mrh @ T_wor_ego @ T_ego_wor
+        elif src_frame == "egomotion" and dst_frame == "egomotion":
+            Ts = T_wor_ego @ T_ego_wor
+        else:
+            print(
+                "Combination of source target frame has not been implemented yet."
+            )
+            sys.exit()
 
         return Ts

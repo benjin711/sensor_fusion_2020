@@ -17,5 +17,8 @@ venv/
 # Pickles
 **.pkl
 
+# Personal Debug Folder
+.debug
+
 # Generated
 runs

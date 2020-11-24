@@ -43,3 +43,7 @@ def write_point_cloud(file_path, point_cloud):
         point_cloud.tofile(file_path)
     else:
         print("Saving in specified point cloud format is not possible.")
+
+
+def write_cone_array(file_path, cone_array):
+    cone_array.tofile(file_path)

@@ -72,6 +72,15 @@ def command_line_parser():
         default=False,
         help='Calculate relative rotations between consecutive point clouds')
 
+    parser.add_argument(
+        '-l',
+        '--match_lidar_cone_arrays',
+        type=str2bool,
+        default=False,
+        help=
+        'Transform the lidar pipeline cones to the reference coordinate systems of our data.'
+    )
+
     cfg = parser.parse_args()
 
     return cfg

@@ -63,6 +63,25 @@ def timestamps_within_interval(interval, timestamps):
     return max_timestamp - min_timestamp < interval
 
 
+def get_reference_timestamps(data_folder_path):
+    forward_camera_filtered_folder = "forward_camera_filtered"
+
+    if os.path.exists(
+            os.path.join(data_folder_path, forward_camera_filtered_folder,
+                         "timestamps.txt")):
+        timestamp_filepaths_dict = {
+            "reference_timestamps":
+            os.path.join(data_folder_path, forward_camera_filtered_folder,
+                         "timestamps.txt"),
+        }
+
+        return read_timestamps(timestamp_filepaths_dict)
+
+    else:
+        print("Reference timestamps don't seem to have been extracted yet.")
+        sys.exit()
+
+
 def write_reference_timestamps(dst_image_folder, reference_timestamps):
     print("\nUpdate timestamps.txt")
     with open(os.path.join(dst_image_folder, 'timestamps.txt'),
@@ -356,3 +375,26 @@ def project_points_to_pixels(pcd, R, t, K, img_shape):
         z_filter)
 
     return pixels, pixel_filter
+
+
+def get_lidar_cone_array_timestamps(data_folder_path):
+    timestamp_filepaths_dict = {
+        "lidar_cone_arrays":
+        os.path.join(data_folder_path, "lidar_cone_arrays/timestamps.txt")
+    }
+
+    return read_timestamps(timestamp_filepaths_dict)
+
+
+def get_lidar_cone_array_files(data_folder_path):
+
+    lidar_cone_array_folder = os.path.join(data_folder_path,
+                                           "lidar_cone_arrays")
+    lidar_cone_array_files = os.listdir(lidar_cone_array_folder)
+    lidar_cone_array_files.remove("timestamps.txt")
+    lidar_cone_array_files = sorted([
+        os.path.join(lidar_cone_array_folder, lidar_cone_array_file)
+        for lidar_cone_array_file in lidar_cone_array_files
+    ])
+
+    return lidar_cone_array_files
