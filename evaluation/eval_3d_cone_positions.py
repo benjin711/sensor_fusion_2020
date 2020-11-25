@@ -13,25 +13,10 @@ def command_line_parser():
         add_help=True, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument(
-        '-d',
-        '--data_folders',
-        nargs="+",
-        default=[
-            '/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-07-05_tuggen/data/autocross_2020-07-05-11-58-07',
-            # '/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-07-05_tuggen/data/autocross_2020-07-05-12-35-31',
-            # '/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-07-05_tuggen/data/autocross_2020-07-05-13-57-26',
-            # '/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-07-08_duebendorf/data/autocross_2020-07-08-09-53-46',
-            # '/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-07-12_tuggen/data/autocross_2020-07-12-09-54-31',
-            # '/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-07-12_tuggen/data/autocross_2020-07-12-10-00-35',
-            # '/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-07-19_tuggen/data/autocross_2020-07-19-15-18-28',
-            # '/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-08-01_tuggen/data/autocross_2020-08-01-14-45-23',
-            # '/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-08-01_tuggen/data/autocross_2020-08-01-18-30-54',
-            # '/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-08-02_tuggen/data/autocross_2020-08-02-12-01-19',
-            # '/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-08-02_tuggen/data/autocross_2020-08-02-09-26-48',
-            # '/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-08-12_duebendorf/data/autocross_2020-08-12-13-15-14',
-            # '/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-08-23_tuggen/data/autocross_2020-08-23-08-10-36',
-            # '/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-08-08_alpnach/data/autocross_2020-08-08-13-46-33'
-        ],
+        '-l',
+        '--label_paths_files',
+        default=
+        '/home/benjin/Development/git/sensor_fusion_2020/data/full/test.txt',
         type=str,
         help='Specify which data to use to calculate metrics')
 
@@ -54,8 +39,8 @@ def match_cone_arrays(cfg):
     indices = []
 
     # Pathing
-    data_folder = cfg.data_folders[0]
-    static_transformations_folder = os.path.join(data_folder, "..", "..",
+    label_paths_file = cfg.label_paths_files[0]
+    static_transformations_folder = os.path.join(label_paths_file, "..", "..",
                                                  "static_transformations")
 
     # Get static transformation: mrh to ego
@@ -95,7 +80,7 @@ def match_cone_arrays(cfg):
         gt_cone_arrays = []
 
         gt_cone_array_indices = []
-        gt_cone_array_folder = os.path.join(data_folder,
+        gt_cone_array_folder = os.path.join(label_paths_file,
                                             camera + "_cones_corrected")
 
         for (_, _, current_files) in os.walk(gt_cone_array_folder):
@@ -131,7 +116,7 @@ def match_cone_arrays(cfg):
     # Get lidar pipeline cone arrays
     lidar_cone_arrays = []
 
-    lidar_cone_array_folder = os.path.join(data_folder,
+    lidar_cone_array_folder = os.path.join(label_paths_file,
                                            "lidar_cone_arrays_filtered")
     lidar_cone_array_files = []
     for (_, _, current_files) in os.walk(lidar_cone_array_folder):
