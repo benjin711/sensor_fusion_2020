@@ -27,9 +27,31 @@ def command_line_parser():
                         choices=['vis, metrics'],
                         help='Specify what the program should do')
 
+    parser.add_argument(
+        '-md',
+        '--max_distance',
+        default=80,
+        type=int,
+        help=
+        'Maximal expected prediction distance. Every prediction above will be discarded.'
+    )
+
+    parser.add_argument('-i',
+                        '--interval_length',
+                        default=2,
+                        type=int,
+                        help='Interval length for grouping predicted cones.')
+
     cfg = parser.parse_args()
 
     return cfg
+
+
+def check_cfg(cfg):
+    if cfg.max_distance % cfg.interval_length != 0:
+        return False
+
+    return True
 
 
 def match_cone_arrays(cfg):
@@ -183,14 +205,12 @@ def visualize_cone_arrays(cfg):
 
 
 def calculate_metrics(cfg):
+    MAX_DIST_PREDICTED_TO_GT_CONE = 0.5
+
     cone_arrays_dict = match_cone_arrays(cfg)
     num_cone_arrays = len(cone_arrays_dict["lidar"])
 
-    MAX_RANGE = 80
-    D_RANGE = 2
-    MAX_DIST = 0.5
-
-    depth_metric = np.zeros((2, MAX_RANGE // D_RANGE))
+    depth_metric = np.zeros((2, cfg.max_distance // cfg.interval_length))
 
     for idx in range(num_cone_arrays):
         gt_cone_array = o3d.geometry.PointCloud()
@@ -203,16 +223,19 @@ def calculate_metrics(cfg):
             [k, idx_nn,
              _] = gt_cone_array_tree.search_knn_vector_3d(lidar_cone, 1)
             [k_, idx_ball, _] = gt_cone_array_tree.search_radius_vector_3d(
-                lidar_cone, MAX_DIST)
+                lidar_cone, MAX_DIST_PREDICTED_TO_GT_CONE)
 
             if idx_nn[0] in idx_ball:
                 gt_cone = cone_arrays_dict["gt"][idx][idx_nn[0], 1:]
-                dist_gt_origin = np.clip(int(np.linalg.norm(gt_cone) / 2), 0,
-                                         39)
+                dist_gt_origin = np.linalg.norm(gt_cone)
+                if dist_gt_origin >= cfg.max_distance:
+                    continue
+                dist_gt_origin_array_idx = int(dist_gt_origin /
+                                               cfg.interval_length)
                 dist_gt_lidar = np.linalg.norm(gt_cone - lidar_cone)
 
-                depth_metric[0, dist_gt_origin] += 1
-                depth_metric[1, dist_gt_origin] += dist_gt_lidar
+                depth_metric[0, dist_gt_origin_array_idx] += 1
+                depth_metric[1, dist_gt_origin_array_idx] += dist_gt_lidar
 
     for idx in range(depth_metric.shape[1]):
         if depth_metric[0, idx] != 0:
@@ -229,7 +252,10 @@ def calculate_metrics(cfg):
 
 
 def main():
-    cfg = command_line_parser()
+    cfg = command_line_parser() if check_cfg(cfg) else None
+    if cfg == None:
+        print("Command line arguments failed check!")
+        sys.exit()
 
     if cfg.mode == "vis":
         visualize_cone_arrays(cfg)
