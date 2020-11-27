@@ -6,7 +6,8 @@ import cv2
 import open3d as o3d
 import yaml
 from matplotlib import pyplot as plt
-from glob import glob
+import re
+import pathlib
 
 
 def command_line_parser():
@@ -30,7 +31,7 @@ def command_line_parser():
 
     parser.add_argument('-m',
                         '--mode',
-                        default='metrics',
+                        default='vis',
                         type=str,
                         choices=['vis, metrics'],
                         help='Specify what the program should do')
@@ -38,7 +39,7 @@ def command_line_parser():
     parser.add_argument(
         '-md',
         '--max_distance',
-        default=80,
+        default=60,
         type=int,
         help=
         'Maximal expected prediction distance. Every prediction above will be discarded.'
@@ -46,7 +47,7 @@ def command_line_parser():
 
     parser.add_argument('-i',
                         '--interval_length',
-                        default=2,
+                        default=3,
                         type=int,
                         help='Interval length for grouping predicted cones.')
 
@@ -62,12 +63,14 @@ def check_cfg(cfg):
 
 
 def match_cone_arrays(cfg):
-    def duplicate_gt(gt_cone_array_path):
-        duplicates = glob(
+    def duplicate_gt(gt_cone_array_path, gt_cone_array_paths):
+        reg_str = re.compile(
             gt_cone_array_path.replace('forward',
-                                       '*').replace('left',
-                                                    '*').replace('right', '*'))
-        return len(duplicates) > 0
+                                       '.+').replace('left', '.+').replace(
+                                           'right', '.+'))
+        num_duplicates = sum(
+            [bool(reg_str.match(path)) for path in gt_cone_array_paths])
+        return num_duplicates > 0
 
     def get_lidar_cone_array_path(gt_cone_array_path):
         cameras = ["left", "right", "forward"]
@@ -82,7 +85,7 @@ def match_cone_arrays(cfg):
         else:
             return None
 
-    def get_T_mrh_to_ego(static_transformation_folder):
+    def get_T_mrh_to_ego(static_transformations_folder):
         T_mrh_ego = np.eye(4)
 
         T_mrh_ego_file = os.path.join(static_transformations_folder,
@@ -119,7 +122,8 @@ def match_cone_arrays(cfg):
     def extract_test_day_from_path(path, base_folder):
         path_ = path.replace(base_folder, '')
         test_day = os.path.split(path_)[0]
-        return test_day
+        p = pathlib.Path(test_day)
+        return p.parts[1]
 
     def extract_camera_from_path(gt_cone_array_path):
         cameras = ["left", "right", "forward"]
@@ -137,6 +141,16 @@ def match_cone_arrays(cfg):
     with open(cfg.label_paths_file, "r") as f:
         orig_label_paths = f.readlines()
 
+    # Filter for debugging purposes
+    pattern = '2020-07-12_tuggen'
+
+    filtered_label_paths = [
+        orig_label_path for orig_label_path in orig_label_paths
+        if orig_label_path.find(pattern) != -1
+    ]
+
+    orig_label_paths = filtered_label_paths
+
     base_folder_name = os.path.basename(cfg.base_folder)
     index = orig_label_paths[0].find(base_folder_name)
     index += len(base_folder_name) + 1
@@ -151,13 +165,13 @@ def match_cone_arrays(cfg):
                                                     'cones_corrected').replace(
                                                         'txt', 'bin')
 
-            if os.path.exists(gt_cone_array_path
-                              ) and not duplicate_gt(gt_cone_array_path):
+            if os.path.exists(gt_cone_array_path) and not duplicate_gt(
+                    gt_cone_array_path, gt_cone_array_paths):
                 # - [ ]  Filter out duplicates, meaning gt cone arrays that belong to the same timestamp
                 # - [ ]  For each gt_cone_array, find the corresponding lidar file path, skip if not found
                 lidar_cone_array_path = get_lidar_cone_array_path(
                     gt_cone_array_path)
-                if lidar_cone_array is not None:
+                if lidar_cone_array_path is not None:
                     gt_cone_array_paths.append(gt_cone_array_path)
                     lidar_cone_array_paths.append(lidar_cone_array_path)
                 else:
@@ -179,20 +193,21 @@ def match_cone_arrays(cfg):
     # All gt cone arrays are in their respective camera frame
     for gt_cone_array_path, lidar_cone_array_path in zip(
             gt_cone_array_paths, lidar_cone_array_paths):
-        test_day = extract_test_day_from_path(gt_cone_array_path)
+        test_day = extract_test_day_from_path(gt_cone_array_path,
+                                              cfg.base_folder)
 
         T_mrh_ego = get_T_mrh_to_ego(
             os.path.join(cfg.base_folder, test_day, "static_transformations"))
 
         camera = extract_camera_from_path(gt_cone_array_path)
 
-        T_camera_to_mrh = get_T_camera_to_mrh(
+        T_camera_mrh = get_T_camera_to_mrh(
             os.path.join(cfg.base_folder, test_day, "static_transformations"),
             camera)
 
-        T_camera_to_ego = T_mrh_ego @ T_camera_to_mrh
+        T_camera_ego = T_mrh_ego @ T_camera_mrh
 
-        gt_cone_array = np.fromfile(gt_cone_array_file).reshape(-1, 4)
+        gt_cone_array = np.fromfile(gt_cone_array_path).reshape(-1, 4)
         cone_types = gt_cone_array[:, 0]
         cone_positions = gt_cone_array[:, 1:]
 
@@ -203,112 +218,8 @@ def match_cone_arrays(cfg):
             (cone_types.reshape(-1, 1), h_cone_positions.T[:, :3]))
         cone_arrays_dict["gt"].append(gt_cone_array)
 
-        lidar_cone_array = np.fromfile(lidar_cone_array_file).reshape(-1, 3)
+        lidar_cone_array = np.fromfile(lidar_cone_array_path).reshape(-1, 3)
         cone_arrays_dict["lidar"].append(lidar_cone_array)
-
-    # Get ground truth cone arrays in ego motion frame
-    # Use the GT cone arrays from the left and right camera frames
-    # gt_cone_arrays_dict = {"left": {}, "right": {}, "forward": {}}
-    # indices = []
-
-    # # Pathing
-    # label_paths_file = cfg.label_paths_file[0]
-    # static_transformations_folder = os.path.join(label_paths_file, "..", "..",
-    #                                              "static_transformations")
-
-    # # Get static transformation: mrh to ego
-
-    # for camera in gt_cone_arrays_dict.keys():
-    #     # Get static transformation: camera to mrh
-    #     T_mrh_camera = np.eye(4)
-
-    #     T_mrh_camera_file = os.path.join(static_transformations_folder,
-    #                                      "extrinsics_mrh_" + camera + ".yaml")
-    #     transformation_file = cv2.FileStorage(T_mrh_camera_file,
-    #                                           cv2.FILE_STORAGE_READ)
-    #     R_mrh_camera = transformation_file.getNode("R_mtx").mat()
-    #     t_mrh_camera = transformation_file.getNode("t_mtx").mat()
-    #     transformation_file.release()
-    #     T_mrh_camera[:3, :
-    #                  3], T_mrh_camera[:3,
-    #                                   3] = R_mrh_camera, t_mrh_camera.reshape(
-    #                                       -1)
-    #     T_camera_mrh = np.linalg.inv(T_mrh_camera)
-    #     T_camera_ego = T_mrh_ego @ T_camera_mrh
-
-    #     # Get ground truth cone arrays in mrh frame
-    #     gt_cone_arrays = []
-
-    #     gt_cone_array_indices = []
-    #     gt_cone_array_folder = os.path.join(label_paths_file,
-    #                                         camera + "_cones_corrected")
-
-    #     for (_, _, current_files) in os.walk(gt_cone_array_folder):
-    #         gt_cone_array_files = [
-    #             os.path.join(gt_cone_array_folder, current_file)
-    #             for current_file in current_files
-    #         ]
-
-    #         for current_file in current_files:
-    #             filename, _ = os.path.splitext(current_file)
-    #             gt_cone_array_indices.append(int(filename))
-
-    #         break
-
-    #     for idx, gt_cone_array_file in enumerate(gt_cone_array_files):
-    #         gt_cone_array = np.fromfile(gt_cone_array_file).reshape(-1, 4)
-    #         cone_types = gt_cone_array[:, 0]
-    #         cone_positions = gt_cone_array[:, 1:]
-    #         h_cone_positions = np.hstack(
-    #             (cone_positions, np.ones((cone_positions.shape[0], 1))))
-    #         h_cone_positions = T_camera_ego @ h_cone_positions.T
-    #         gt_cone_array = np.hstack(
-    #             (cone_types.reshape(-1, 1), h_cone_positions.T[:, :3]))
-    #         gt_cone_arrays_dict[camera][
-    #             gt_cone_array_indices[idx]] = gt_cone_array
-
-    #     indices.extend(list(gt_cone_arrays_dict[camera].keys()))
-
-    # # Get all indices for which we have gt cone arrays
-    # u, c = np.unique(np.array(indices), return_counts=True)
-    # indices = u[c > 0]
-
-    # # Get lidar pipeline cone arrays
-    # lidar_cone_arrays = []
-
-    # lidar_cone_array_folder = os.path.join(label_paths_file,
-    #                                        "lidar_cone_arrays_filtered")
-    # lidar_cone_array_files = []
-    # for (_, _, current_files) in os.walk(lidar_cone_array_folder):
-    #     lidar_cone_array_files.extend(current_files)
-    # lidar_cone_array_files.remove("timestamps.txt")
-    # lidar_cone_array_files.sort()
-    # for lidar_cone_array_file in lidar_cone_array_files:
-    #     lidar_cone_array_file = os.path.join(lidar_cone_array_folder,
-    #                                          lidar_cone_array_file)
-    #     lidar_cone_array = np.fromfile(lidar_cone_array_file).reshape(-1, 3)
-    #     lidar_cone_arrays.append(lidar_cone_array)
-
-    # # Filter comparable data
-    # cone_arrays_dict = {"lidar": [], "gt": []}
-    # gt_indices = []
-
-    # for idx in indices:
-    #     lidar_cone_array = lidar_cone_arrays[idx]
-    #     if lidar_cone_array.shape[0] != 0:
-    #         cone_arrays_dict["lidar"].append(lidar_cone_array)
-    #         gt_indices.append(idx)
-
-    # for idx in gt_indices:
-    #     if idx in gt_cone_arrays_dict["forward"]:
-    #         cone_arrays_dict["gt"].append(gt_cone_arrays_dict["forward"][idx])
-    #     elif idx in gt_cone_arrays_dict["right"]:
-    #         cone_arrays_dict["gt"].append(gt_cone_arrays_dict["right"][idx])
-    #     elif idx in gt_cone_arrays_dict["left"]:
-    #         cone_arrays_dict["gt"].append(gt_cone_arrays_dict["left"][idx])
-    #     else:
-    #         print("There exists no ground truth cone array with this index!")
-    #         sys.exit()
 
     return cone_arrays_dict
 
@@ -380,10 +291,10 @@ def calculate_metrics(cfg):
             depth_metric[1, idx] = depth_metric[1, idx] / depth_metric[0, idx]
 
     plt.style.use("fivethirtyeight")
-    dist_ranges = np.arange(0, cfg.max_distance, cfg.interval_length).tolist()
+    dist_ranges = np.linspace(0, cfg.max_distance, int(cfg.max_distance/cfg.interval_length + 1)).astype(np.int).tolist()
     x_dist_ranges = [
-        str(dist_ranges[i]) + " - " + str(dist_ranges[i + 1])
-        for i in range(len(dist_ranges) - 1)
+        str(dist_ranges[i]) + "-" + str(dist_ranges[i + 1])
+        for i in range(len(dist_ranges)-1)
     ]
     y_num_predictions = depth_metric[0, :]
     y_average_dist_error = depth_metric[1, :]
@@ -392,10 +303,10 @@ def calculate_metrics(cfg):
             y_num_predictions,
             color='#444444',
             label='Number of Predictions')
-    plt.bar(x_dist_ranges,
-            y_average_dist_error,
-            color='#777777',
-            label='Average Distance Error')
+    # plt.bar(x_dist_ranges,
+    #         y_average_dist_error,
+    #         color='#777777',
+    #         label='Average Distance Error')
 
     plt.legend()
     plt.show()
