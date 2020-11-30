@@ -110,9 +110,9 @@ class LoadJointImages:
         self.right_images = [forward_path.replace('forward', 'right')
                              for forward_path in self.forward_images]
 
-
-        self.forward_dis = [image_path.replace('camera_filtered', 'di').replace('.png', '.bin')
-                            for image_path in self.forward_images]
+        self.forward_dis = [
+            image_path.replace('camera_filtered', 'di').replace('.png', '.bin')
+            for image_path in self.forward_images]
         self.forward_masks = [
             image_path.replace('camera_filtered', 'm').replace('.png', '.bin')
             for image_path in self.forward_images]
