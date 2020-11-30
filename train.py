@@ -298,6 +298,9 @@ def train(hyp, tb_writer, opt, device):
 
                     targets = multiscale_targets(targets, unpad_shape, (dw, dh), ns)
             # Forward
+            if imgs.shape[0] < opt.batch_size:
+                pass
+
             pred = model(imgs, rgb_drop=rgb_drop)
 
             # Loss
