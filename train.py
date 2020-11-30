@@ -1,5 +1,5 @@
 import argparse
-
+import random
 import torch.distributed as dist
 import torch.nn.functional as F
 import torch.optim as optim
@@ -268,8 +268,7 @@ def train(hyp, tb_writer, opt, device):
             imgs[:, 3, :, :] /= 255.0 # Rescale depth channel. Max depth found in inputs was 202 m
 
             # Random RGB drop
-            if opt.rgb_drop:
-                imgs[:, :3, :, :] *= torch.randint(0, 2, size=(1,)).to(device, non_blocking=True)
+            rgb_drop = random.choice([True, False]) and opt.rgb_drop
 
             # Warmup
             if ni <= nw:
@@ -299,7 +298,7 @@ def train(hyp, tb_writer, opt, device):
 
                     targets = multiscale_targets(targets, unpad_shape, (dw, dh), ns)
             # Forward
-            pred = model(imgs)
+            pred = model(imgs, rgb_drop=rgb_drop)
 
             # Loss
             loss, loss_items = compute_loss(pred, targets.to(device), model)  # scaled by batch_size
