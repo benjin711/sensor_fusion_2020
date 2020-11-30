@@ -269,7 +269,7 @@ def train(hyp, tb_writer, opt, device):
 
             # Random RGB drop
             if opt.rgb_drop:
-                imgs[:, :3, :, :] *= torch.randint(0, 2, size=(1,))
+                imgs[:, :3, :, :] *= torch.randint(0, 2, size=(1,)).to(device, non_blocking=True)
 
             # Warmup
             if ni <= nw:
