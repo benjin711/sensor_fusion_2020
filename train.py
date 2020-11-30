@@ -267,6 +267,10 @@ def train(hyp, tb_writer, opt, device):
             imgs[:, :3, :, :] /= 255.0 # Rescale RGB channels
             imgs[:, 3, :, :] /= 255.0 # Rescale depth channel. Max depth found in inputs was 202 m
 
+            # Random RGB drop
+            if opt.rgb_drop:
+                imgs[:, :3, :, :] *= torch.randint(0, 2, size=(1,))
+
             # Warmup
             if ni <= nw:
                 xi = [0, nw]  # x interp
@@ -443,6 +447,7 @@ if __name__ == '__main__':
     parser.add_argument('--single-cls', action='store_true', help='train as single-class dataset')
     parser.add_argument('--sync-bn', action='store_true', help='use SyncBatchNorm, only available in DDP mode')
     parser.add_argument('--local_rank', type=int, default=-1, help='DDP parameter, do not modify')
+    parser.add_argument('--rgb_drop', action='store_true', help='DDP parameter, do not modify')
     opt = parser.parse_args()
 
     last = get_latest_run() if opt.resume == 'get_last' else opt.resume  # resume from most recent run
