@@ -31,7 +31,7 @@ def command_line_parser():
 
     parser.add_argument('-m',
                         '--mode',
-                        default='vis',
+                        default='metrics',
                         type=str,
                         choices=['vis, metrics'],
                         help='Specify what the program should do')
@@ -142,14 +142,14 @@ def match_cone_arrays(cfg):
         orig_label_paths = f.readlines()
 
     # Filter for debugging purposes
-    pattern = '2020-07-12_tuggen'
+    # pattern = '2020-07-12_tuggen'
 
-    filtered_label_paths = [
-        orig_label_path for orig_label_path in orig_label_paths
-        if orig_label_path.find(pattern) != -1
-    ]
+    # filtered_label_paths = [
+    #     orig_label_path for orig_label_path in orig_label_paths
+    #     if orig_label_path.find(pattern) != -1
+    # ]
 
-    orig_label_paths = filtered_label_paths
+    # orig_label_paths = filtered_label_paths
 
     base_folder_name = os.path.basename(cfg.base_folder)
     index = orig_label_paths[0].find(base_folder_name)
@@ -290,7 +290,7 @@ def calculate_metrics(cfg):
         if depth_metric[0, idx] != 0:
             depth_metric[1, idx] = depth_metric[1, idx] / depth_metric[0, idx]
 
-    plt.style.use("fivethirtyeight")
+    plt.style.use("seaborn")
     dist_ranges = np.linspace(0, cfg.max_distance, int(cfg.max_distance/cfg.interval_length + 1)).astype(np.int).tolist()
     x_dist_ranges = [
         str(dist_ranges[i]) + "-" + str(dist_ranges[i + 1])
@@ -299,16 +299,23 @@ def calculate_metrics(cfg):
     y_num_predictions = depth_metric[0, :]
     y_average_dist_error = depth_metric[1, :]
 
-    plt.bar(x_dist_ranges,
+    fig, (ax1, ax2) = plt.subplots(nrows=2, ncols=1, sharex=True)
+
+    ax1.bar(x_dist_ranges,
             y_num_predictions,
             color='#444444',
             label='Number of Predictions')
-    # plt.bar(x_dist_ranges,
-    #         y_average_dist_error,
-    #         color='#777777',
-    #         label='Average Distance Error')
-
-    plt.legend()
+    ax1.set_ylabel("Number of Predictions")
+    ax1.set_title("3D Cone Prediction Evaluation")
+    ax1.legend()
+    ax2.bar(x_dist_ranges,
+            y_average_dist_error,
+            color='#777777',
+            label='Average Distance Error')
+    ax2.set_xlabel("Distance Range")
+    ax2.set_ylabel("Average Distance Error")
+    ax2.legend()
+    plt.tight_layout()
     plt.show()
 
     print("Done")
