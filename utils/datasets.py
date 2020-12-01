@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 import torch.nn.functional as F
 import torch
+import albumentations as A
 from PIL import Image, ExifTags
 from torch.utils.data import Dataset
 from tqdm import tqdm
@@ -567,6 +568,18 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         self.mosaic = self.augment and not self.rect  # load 4 images at a time into a mosaic (only during training)
         self.mosaic_border = [-img_size // 2, -img_size // 2]
         self.stride = stride
+        self.train_transform = A.Compose(
+            [
+                A.MotionBlur(p=0.25),
+                A.RandomRain(p=0.25),
+                A.RandomSunFlare(p=0.25),
+                A.RandomBrightnessContrast(p=0.25),
+                A.HueSaturationValue(hue_shift_limit=hyp['hsv_h'],
+                                     sat_shift_limit=hyp['hsv_s'],
+                                     val_shift_limit=hyp['hsv_v'],
+                                     p=0.25),
+            ]
+        )
 
         # Define labels
         # self.label_files = [
@@ -806,11 +819,11 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                                             shear=hyp['shear'])
 
             # Augment colorspace
-            augment_hsv(img[:, :, :3].astype(np.uint8),
-                        hgain=hyp['hsv_h'],
-                        sgain=hyp['hsv_s'],
-                        vgain=hyp['hsv_v'])
-
+            # augment_hsv(img[:, :, :3].astype(np.uint8),
+            #             hgain=hyp['hsv_h'],
+            #             sgain=hyp['hsv_s'],
+            #             vgain=hyp['hsv_v'])
+            img[:, :, :3] = self.train_transform(image=img[:, :, :3])["image"]
             # Apply cutouts
             # if random.random() < 0.9:
             #     labels = cutout(img, labels)
