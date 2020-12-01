@@ -44,9 +44,8 @@ class BerHu(nn.Module):
                             -delta ** 2.) + delta ** 2
         part2 = part2 / (2. * delta)
 
-        loss = part1 + part2
-        loss = torch.sum(loss)
-        return loss
+        loss_per_box = part1 + part2
+        return loss_per_box
 
 
 # Set printoptions
@@ -475,7 +474,8 @@ def compute_loss(p, targets, model):  # predictions, targets, model
     # Define criteria
     BCEcls = nn.BCEWithLogitsLoss(pos_weight=ft([h['cls_pw']]), reduction=red).to(device)
     BCEobj = nn.BCEWithLogitsLoss(pos_weight=ft([h['obj_pw']]), reduction=red).to(device)
-    BHdepth = BerHu().to(device)
+    # BHdepth = BerHu().to(device)
+    BHdepth = nn.SmoothL1Loss(reduction=red).to(device)
 
     # class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
     cp, cn = smooth_BCE(eps=0.0)

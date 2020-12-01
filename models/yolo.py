@@ -2,7 +2,7 @@ import argparse
 from copy import deepcopy
 
 from models.experimental import *
-
+from utils.datasets import resize_dm_torch
 
 class Detect(nn.Module):
     def __init__(self, nc=80, anchors=(), ch=()):  # detection layer
@@ -20,11 +20,21 @@ class Detect(nn.Module):
         self.export = False  # onnx export
 
     # [xywh, depth, obj_prob, class_1_prob, class_2_prob, ... class_nc_prob]
-    def forward(self, x):
+    def forward(self, x, depth=None):
         # x = x.copy()  # for profiling
         z = []  # inference output
         self.training |= self.export
+
+        if depth is not None:
+            if len(depth.shape) == 3:
+                depth = depth.unsqueeze(0)
+
         for i in range(self.nl):
+            if depth is not None:
+                scale = x[i].shape[-1] / depth.shape[-1]
+                d_scaled = resize_dm_torch(depth, scale)
+                x[i] = torch.cat((x[i], d_scaled), dim=-3)
+
             x[i] = self.m[i](x[i])  # conv
             bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
             x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
@@ -63,11 +73,18 @@ class Model(nn.Module):
         if nc and nc != self.yaml['nc']:
             print('Overriding %s nc=%g with nc=%g' % (cfg, self.yaml['nc'], nc))
             self.yaml['nc'] = nc  # override yaml value
-        self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch])  # model, savelist, ch_out
+
+        # TODO: update input channels from 32 to 5 if not splitting initial conv
+        self.model, self.save = parse_model(deepcopy(self.yaml), ch=[32])  # model, savelist, ch_out
         # print([x.shape for x in self.forward(torch.zeros(1, ch, 64, 64))])
 
         # Build strides, anchors
         m = self.model[-1]  # Detect()
+
+        # Initial convs
+        self.conv_rgb = nn.Conv2d(3, 16, 3)
+        self.conv_dm = nn.Conv2d(2, 16, 3)
+
         if isinstance(m, Detect):
             s = 128  # 2x min stride
             m.stride = torch.tensor([s / x.shape[-2] for x in self.forward(torch.zeros(1, ch, s, s))])  # forward
@@ -77,10 +94,14 @@ class Model(nn.Module):
             self._initialize_biases()  # only run once
             # print('Strides: %s' % m.stride.tolist())
 
+
+
         # Init weights, biases
         torch_utils.initialize_weights(self)
         self.info()
         print('')
+
+
 
     def forward(self, x, augment=False, profile=False):
         if augment:
@@ -102,6 +123,14 @@ class Model(nn.Module):
             return self.forward_once(x, profile)  # single-scale inference, train
 
     def forward_once(self, x, profile=False):
+        # Split RGB and dm. Conv each independently first.
+        input_rgb = x[:, :3, :, :]
+        input_dm = x[:, 3:, :, :]
+
+        x_rgb = self.conv_rgb(input_rgb)
+        x_dm = self.conv_dm(input_dm)
+        x = torch.cat([x_rgb, x_dm], dim=1)
+
         y, dt = [], []  # outputs
         for m in self.model:
             if m.f != -1:  # if not from previous layer
@@ -119,7 +148,10 @@ class Model(nn.Module):
                 dt.append((torch_utils.time_synchronized() - t) * 100)
                 print('%10.1f%10.0f%10.1fms %-40s' % (o, m.np, dt[-1], m.type))
 
-            x = m(x)  # run
+            if isinstance(m, Detect):
+                x = m(x, input_dm)
+            else:
+                x = m(x)  # run
             y.append(x if m.i in self.save else None)  # save output
 
         if profile:
@@ -211,6 +243,8 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             args.append([ch[x + 1] for x in f])
             if isinstance(args[1], int):  # number of anchors
                 args[1] = [list(range(args[1] * 2))] * len(f)
+            args[-1] = [x+2 for x in args[-1]]
+
         else:
             c2 = ch[f]
 

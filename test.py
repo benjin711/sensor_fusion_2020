@@ -1,5 +1,6 @@
 import argparse
 import json
+import pickle
 
 from models.experimental import *
 from utils.datasets import *
@@ -19,7 +20,9 @@ def test(data,
          dataloader=None,
          save_dir='',
          merge=False,
-         save_txt=False):
+         save_txt=False,
+         generate_depth_stats=False,
+         stride=32):
     # Initialize/load model and set device
     training = model is not None
     if training:  # called by train.py
@@ -61,20 +64,27 @@ def test(data,
 
     # Dataloader
     if not training:
-        img = torch.zeros((1, 3, imgsz, imgsz), device=device)  # init img
+        path = data['test'] if opt.task == 'test' else data[
+            'val']  # path to val/test images
+        dataloader, dataset = \
+        create_dataloader(path, imgsz, batch_size, model.stride.max(), opt,
+                          hyp=None, augment=False, cache=False, pad=0,
+                          rect=True)
+        tmp_img = dataset[0][0]
+        img_shape = np.array(tmp_img.detach().cpu().numpy().shape[1:])
+        img = torch.zeros((1, 5, img_shape[0], img_shape[1]), device=device)  # init img
         _ = model(img.half() if half else img) if device.type != 'cpu' else None  # run once
-        path = data['test'] if opt.task == 'test' else data['val']  # path to val/test images
-        dataloader = create_dataloader(path, imgsz, batch_size, model.stride.max(), opt,
-                                       hyp=None, augment=False, cache=False, pad=0.5, rect=True)[0]
 
     seen = 0
     names = model.names if hasattr(model, 'names') else model.module.names
     coco91class = coco80_to_coco91_class()
-    s = ('%20s' + '%12s' * 6) % ('Class', 'Images', 'Targets', 'P', 'R', 'mAP@.5', 'mAP@.5:.95')
-    p, r, f1, mp, mr, map50, map, t0, t1 = 0., 0., 0., 0., 0., 0., 0., 0., 0.
+    s = ('%20s' + '%12s' * 7) % ('Class', 'Images', 'Targets', 'P', 'R', 'mAP@.5', 'mAP@.5:.95', 'Depth Error')
+    p, r, f1, mp, mr, map50, map, t0, t1, depth_err = 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.
     loss = torch.zeros(4, device=device)
     total_boxes = torch.zeros(1, device=device)
-    jdict, stats, depth_stats, ap, ap_class = [], [], [], [], []
+    jdict, stats, ap, ap_class = [], [], [], []
+    depth_stats = {'box_width':[], 'box_height':[], 'depth_true':[], 'depth_pred':[], 'depth_error':[]}
+
     for batch_i, (img, targets, paths, shapes) in enumerate(tqdm(dataloader, desc=s)):
         img = img.to(device, non_blocking=True)
         img = img.half() if half else img.float()  # uint8 to fp16/32
@@ -94,7 +104,7 @@ def test(data,
 
             # Compute loss
             if training:  # if model has loss hyperparameters
-                _, loss_items = compute_loss([x.float() for x in train_out], targets, model)  # GIoU, obj, cls, depth
+                tmp, loss_items = compute_loss([x.float() for x in train_out], targets, model)  # GIoU, obj, cls, depth
                 loss += loss_items[:4]
 
             # Run NMS
@@ -107,7 +117,6 @@ def test(data,
             labels = targets[targets[:, 0] == si, 1:]
             nl = len(labels)
             tcls = labels[:, 0].tolist() if nl else []  # target class
-            tdepth = labels[:, 1].tolist() if nl else [] # target depths
             seen += 1
 
             if pred is None:
@@ -131,7 +140,7 @@ def test(data,
             # Append to pycocotools JSON dictionary
             if save_json:
                 # [{"image_id": 42, "category_id": 18, "bbox": [258.15, 41.29, 348.26, 243.78], "score": 0.236}, ...
-                image_id = Path(paths[si]).stem
+                image_id = paths[si]
                 box = pred[:, :4].clone()  # xyxy
                 scale_coords(img[si].shape[1:], box, shapes[si][0], shapes[si][1])  # to original shape
                 box = xyxy2xywh(box)  # xywh
@@ -152,20 +161,37 @@ def test(data,
                 # target boxes
                 tbox = xywh2xyxy(labels[:, 2:6]) * whwh
 
+                pred_depth = pred[:, 6]
                 # Per target class
                 for cls in torch.unique(tcls_tensor):
                     ti = (cls == tcls_tensor).nonzero().view(-1)  # target indices
                     pi = (cls == pred[:, 5]).nonzero().view(-1)  # prediction indices
+                    pdepth = pred_depth[pi]
 
                     # Search for detections of that class
                     if pi.shape[0]:
                         # Prediction to target ious
                         ious, i = box_iou(pred[pi, :4], tbox[ti]).max(1)  # best ious, indices
 
+
                         # Append detections
                         for j in (ious > iouv[0]).nonzero():
                             d = ti[i[j]]  # detected target
                             if d not in detected:
+                                depth_gt = float(tdepth_tensor[d])
+                                depth = float(pdepth[j])
+                                box = pred[j, :4]
+                                box_h, box_w = float(
+                                box[0, 3] - box[0, 1]), float(
+                                box[0, 2] - box[0, 0])
+
+                                # Log depth statistics
+                                depth_stats['box_width'].append(box_w)
+                                depth_stats['box_height'].append(box_h)
+                                depth_stats['depth_pred'].append(depth)
+                                depth_stats['depth_true'].append(depth_gt)
+                                depth_stats['depth_error'].append(abs(depth-depth_gt))
+
                                 detected.append(d)
                                 correct[pi[j]] = ious[j] > iouv  # iou_thres is 1xn
                                 if len(detected) == nl:  # all targets already located in image
@@ -183,6 +209,18 @@ def test(data,
             f = Path(save_dir) / ('test_batch%g_pred.jpg' % batch_i)
             pred_result = plot_images(img, output_to_target(output, width, height), paths, str(f), names)  # predictions
 
+    if generate_depth_stats:
+        plt.figure()
+        ax = plt.gca()
+        ax.hist(depth_stats['depth_error'])
+        plt.savefig('depth_error_histogram.png', bins=100)
+        plt.show()
+        print(f"Median error: {np.median(np.array(depth_stats['depth_error']))}")
+        print(f"Std error: {np.std(np.array(depth_stats['depth_error']))}")
+
+        with open('depth_stats.pkl', 'wb') as depth_stats_f:
+            pickle.dump(depth_stats, depth_stats_f, pickle.HIGHEST_PROTOCOL)
+
     # Compute statistics
     stats = [np.concatenate(x, 0) for x in zip(*stats)]  # to numpy
     if len(stats) and stats[0].any():
@@ -194,13 +232,13 @@ def test(data,
         nt = torch.zeros(1)
 
     # Print results
-    pf = '%20s' + '%12.3g' * 6  # print format
-    print(pf % ('all', seen, nt.sum(), mp, mr, map50, map))
+    pf = '%20s' + '%12.3g' * 7  # print format
+    print(pf % ('all', seen, nt.sum(), mp, mr, map50, map, np.mean(np.array(depth_stats['depth_error']))))
 
     # Print results per class
     if verbose and nc > 1 and len(stats):
         for i, c in enumerate(ap_class):
-            print(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
+            print("{}, {}, {}, {}, {}, {}, {}".format(names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
 
     # Print speeds
     t = tuple(x / seen * 1E3 for x in (t0, t1, t0 + t1)) + (imgsz, imgsz, batch_size)  # tuple
@@ -236,15 +274,15 @@ def test(data,
     maps = np.zeros(nc) + map
     for i, c in enumerate(ap_class):
         maps[c] = ap[i]
-    return (mp, mr, map50, map, loss[-1]/total_boxes, *(loss.cpu() / len(dataloader)).tolist()), maps, t, (gt_result, pred_result)
+    return (mp, mr, map50, map, np.mean(np.array(depth_stats['depth_error'])), *(loss.cpu() / len(dataloader)).tolist()), maps, t, (gt_result, pred_result)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='test.py')
-    parser.add_argument('--weights', nargs='+', type=str, default='yolov4l-mish.pt', help='model.pt path(s)')
-    parser.add_argument('--data', type=str, default='data/coco128.yaml', help='*.data path')
+    parser.add_argument('--weights', nargs='+', type=str, default='yolov4mmish.pt', help='model.pt path(s)')
+    parser.add_argument('--data', type=str, default='data/amz_tiny.yaml', help='*.data path')
     parser.add_argument('--batch-size', type=int, default=32, help='size of each image batch')
-    parser.add_argument('--img-size', type=int, default=640, help='inference size (pixels)')
+    parser.add_argument('--img-size', type=int, default=1280, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.001, help='object confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.65, help='IOU threshold for NMS')
     parser.add_argument('--save-json', action='store_true', help='save a cocoapi-compatible JSON results file')
@@ -255,6 +293,7 @@ if __name__ == '__main__':
     parser.add_argument('--merge', action='store_true', help='use Merge NMS')
     parser.add_argument('--verbose', action='store_true', help='report mAP by class')
     parser.add_argument('--save-txt', action='store_true', help='save results to *.txt')
+    parser.add_argument('--generate-depth-stats', action='store_true', help='Generate histogram with depth error')
     opt = parser.parse_args()
     opt.save_json |= opt.data.endswith('coco.yaml')
     opt.data = check_file(opt.data)  # check file
@@ -270,7 +309,8 @@ if __name__ == '__main__':
              opt.save_json,
              opt.single_cls,
              opt.augment,
-             opt.verbose)
+             opt.verbose,
+             generate_depth_stats=opt.generate_depth_stats)
 
     elif opt.task == 'study':  # run over a range of settings and save/plot
         for weights in ['yolov4s-mish.pt', 'yolov4m-mish.pt', 'yolov4l-mish.pt', 'yolov4x-mish.pt']:
