@@ -26,9 +26,9 @@ hyp = {'optimizer': 'SGD',  # ['adam', 'SGD', None] if none, default is SGD
        'lr0': 0.01,  # initial learning rate (SGD=1E-2, Adam=1E-3)
        'momentum': 0.937,  # SGD momentum/Adam beta1
        'weight_decay': 5e-4,  # optimizer weight decay
-       'depth': 5e-7, # depth loss gain TODO: tune it, or learn it
+       'depth': 1e-2, # depth loss gain TODO: tune it, or learn it
        'giou': 0.05,  # giou loss gain
-       'cls': 0.5,  # cls loss gain
+       'cls': 5,  # cls loss gain
        'cls_pw': 1.0,  # cls BCELoss positive_weight
        'obj': 1.0,  # obj loss gain (*=img_size/320 if img_size != 320)
        'obj_pw': 1.0,  # obj BCELoss positive_weight
@@ -182,11 +182,9 @@ def train(hyp, tb_writer, opt, device):
         model = DDP(model, device_ids=[rank], output_device=rank)
 
     # Trainloader
-
-    num_train = opt.num_train
     dataloader, dataset = create_dataloader(train_path, imgsz, batch_size, gs, opt, hyp=hyp, augment=False,
                                             cache=opt.cache_images, rect=opt.rect, local_rank=rank,
-                                            world_size=opt.world_size, num_samples=num_train)
+                                            world_size=opt.world_size)
     mlc = np.concatenate(dataset.labels, 0)[:, 0].max()  # max label class
     nb = len(dataloader)  # number of batches
     assert mlc < nc, 'Label class %g exceeds nc=%g in %s. Possible class labels are 0-%g' % (mlc, nc, opt.data, nc - 1)
@@ -194,10 +192,8 @@ def train(hyp, tb_writer, opt, device):
     # Testloader
     if rank in [-1, 0]:
         # local_rank is set to -1. Because only the first process is expected to do evaluation.
-        num_val = opt.num_val
         testloader = create_dataloader(test_path, imgsz_test, total_batch_size, gs, opt, hyp=hyp, augment=False,
-                                       cache=opt.cache_images, rect=True, local_rank=-1, world_size=opt.world_size,
-                                       num_samples=num_val)[0]
+                                       cache=opt.cache_images, rect=True, local_rank=-1, world_size=opt.world_size)[0]
 
     # Model parameters
     hyp['cls'] *= nc / 80.  # scale coco-tuned hyp['cls'] to current dataset
@@ -270,6 +266,10 @@ def train(hyp, tb_writer, opt, device):
             imgs = imgs.to(device, non_blocking=True).float() # uint8 to float32, 0 - 255 to 0.0 - 1.0
             imgs[:, :3, :, :] /= 255.0 # Rescale RGB channels
             imgs[:, 3, :, :] /= 255.0 # Rescale depth channel. Max depth found in inputs was 202 m
+
+            # Random RGB drop
+            if opt.rgb_drop:
+                imgs[:, :3, :, :] *= torch.randint(0, 2, size=(1,)).to(device, non_blocking=True)
 
             # Warmup
             if ni <= nw:
@@ -358,9 +358,6 @@ def train(hyp, tb_writer, opt, device):
                                                  single_cls=opt.single_cls,
                                                  dataloader=testloader,
                                                  save_dir=log_dir)
-                results = list(results)
-                results[4] /= hyp['depth'] # Rescale mean depth loss
-                results = tuple(results)
 
                 # Write
                 with open(results_file, 'a') as f:
@@ -430,8 +427,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--cfg', type=str, default='models/yolov4m-rgbd.yaml', help='model.yaml path')
     parser.add_argument('--data', type=str, default='data/amz_tiny.yaml', help='data.yaml path')
-    parser.add_argument('--num-train', type=int, default=0, help='Number of training samples to take. To take all, use 0')
-    parser.add_argument('--num-val', type=int, default=0, help='Number of val samples to take. To take all, use 0')
     parser.add_argument('--hyp', type=str, default='', help='hyp.yaml path (optional)')
     parser.add_argument('--epochs', type=int, default=300)
     parser.add_argument('--batch-size', type=int, default=16, help="Total batch size for all gpus.")
@@ -452,6 +447,7 @@ if __name__ == '__main__':
     parser.add_argument('--single-cls', action='store_true', help='train as single-class dataset')
     parser.add_argument('--sync-bn', action='store_true', help='use SyncBatchNorm, only available in DDP mode')
     parser.add_argument('--local_rank', type=int, default=-1, help='DDP parameter, do not modify')
+    parser.add_argument('--rgb_drop', action='store_true', help='DDP parameter, do not modify')
     opt = parser.parse_args()
 
     last = get_latest_run() if opt.resume == 'get_last' else opt.resume  # resume from most recent run
