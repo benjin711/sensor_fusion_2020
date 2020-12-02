@@ -30,8 +30,8 @@ def test(data,
 
     else:  # called directly
         device = torch_utils.select_device(opt.device, batch_size=batch_size)
-        merge, save_txt = opt.merge, opt.save_txt  # use Merge NMS, save *.txt labels
-        if save_txt:
+        merge, save_txt, save_bin = opt.merge, opt.save_txt, opt.save_bin  # use Merge NMS, save *.txt labels
+        if save_txt or save_bin:
             out = Path('inference/output')
             if os.path.exists(out):
                 shutil.rmtree(out)  # delete output folder
@@ -66,6 +66,25 @@ def test(data,
     if not training:
         path = data['test'] if opt.task == 'test' else data[
             'val']  # path to val/test images
+
+        # For one time run only
+        # EVAL_SF_EXTEND_TEST_SET = True
+        # if EVAL_SF_EXTEND_TEST_SET:
+        #     with open(path, "r") as f:
+        #         orig_paths = f.readlines()
+
+        #     with open(os.path.join(os.path.dirname(path), "ben_test_extended.txt"), "w") as f:            
+        #         cameras = ["forward", "left", "right"]
+        #         for orig_path in orig_paths:
+        #             which_camera = [camera for camera in cameras if orig_path.find(camera) > 0][0]
+
+        #             for camera in cameras:
+        #                 f.write(orig_path.replace(which_camera, camera))
+        #                 if not os.path.exists(orig_path.replace(which_camera, camera)):
+        #                     tmp = np.zeros((0,3))
+        #                     tmp.tofile(orig_path.replace(which_camera, camera).rstrip("\n"))
+
+
         dataloader, dataset = \
         create_dataloader(path, imgsz, batch_size, model.stride.max(), opt,
                           hyp=None, augment=False, cache=False, pad=0,
@@ -137,6 +156,28 @@ def test(data,
                     xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
                     with open(os.path.join(base, stem), 'a') as f:
                         f.write(('%g ' * 6 + '\n') % (cls, *xywh, dpth))  # label format
+                    
+
+            if save_bin:
+                gn = torch.tensor(shapes[si][0])[[1, 0, 1, 0]] # normalization gain whwh
+                base = os.path.dirname(paths[si])
+                base = str(out / Path(base[1:]))
+                stem = str(Path(paths[si]).stem) + ".txt"
+                os.makedirs(base, exist_ok=True)
+                
+                pred[:, :4] = scale_coords(img[si].shape[1:], pred[:, :4], shapes[si][0], shapes[si][1])  # to original
+
+                pred_bin = np.zeros((0,6))
+                for *xyxy, conf, cls, dpth in pred:
+                    curr_cone = np.zeros(6)
+                    xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
+                    curr_cone[0] = cls
+                    curr_cone[1:5] = xywh
+                    curr_cone[5] = dpth
+                    pred_bin = np.vstack((pred_bin, curr_cone.reshape(1,6)))
+
+                pred_bin.tofile(os.path.join(base, stem.replace('.txt','.bin')))
+                   
             # Clip boxes to image bounds
             clip_coords(pred, (height, width))
 
@@ -290,6 +331,7 @@ if __name__ == '__main__':
     parser.add_argument('--conf-thres', type=float, default=0.001, help='object confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.65, help='IOU threshold for NMS')
     parser.add_argument('--save-json', action='store_true', help='save a cocoapi-compatible JSON results file')
+    parser.add_argument('--save-bin', action='store_true', help='save predictions to bin files')
     parser.add_argument('--task', default='val', help="'val', 'test', 'study'")
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--single-cls', action='store_true', help='treat as single-class dataset')

@@ -10,7 +10,7 @@
 # train and val datasets (image directory or *.txt file with image paths)
 train: /home/benjin/Development/git/sensor_fusion_2020/data/ben_full/ben_train.txt
 val: /home/benjin/Development/git/sensor_fusion_2020/data/ben_full/ben_val.txt
-test: /home/benjin/Development/git/sensor_fusion_2020/data/ben_full/ben_test.txt
+test: /home/benjin/Development/git/sensor_fusion_2020/data/ben_full/ben_test_extended.txt
 
 # number of classes
 nc: 2
