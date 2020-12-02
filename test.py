@@ -126,14 +126,17 @@ def test(data,
 
             # Append to text file
             if save_txt:
-                gn = torch.tensor(shapes[si][0])[[1, 0, 1, 0]]  # normalization gain whwh
-                txt_path = str(out / Path(paths[si]).stem)
+                gn = torch.tensor(shapes[si][0])[[1, 0, 1, 0]] # normalization gain whwh
+                base = os.path.dirname(paths[si])
+                base = str(out / Path(base[1:]))
+                stem = str(Path(paths[si]).stem) + ".txt"
+                os.makedirs(base, exist_ok=True)
+                
                 pred[:, :4] = scale_coords(img[si].shape[1:], pred[:, :4], shapes[si][0], shapes[si][1])  # to original
-                for *xyxy, conf, cls in pred:
+                for *xyxy, conf, cls, dpth in pred:
                     xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-                    with open(txt_path + '.txt', 'a') as f:
-                        f.write(('%g ' * 5 + '\n') % (cls, *xywh))  # label format
-
+                    with open(os.path.join(base, stem), 'a') as f:
+                        f.write(('%g ' * 6 + '\n') % (cls, *xywh, dpth))  # label format
             # Clip boxes to image bounds
             clip_coords(pred, (height, width))
 
@@ -149,7 +152,8 @@ def test(data,
                     jdict.append({'image_id': int(image_id) if image_id.isnumeric() else image_id,
                                   'category_id': coco91class[int(p[5])],
                                   'bbox': [round(x, 3) for x in b],
-                                  'score': round(p[4], 5)})
+                                  'score': round(p[4], 5),
+                                  'depth': p[6]})
 
             # Assign all predictions as incorrect
             correct = torch.zeros(pred.shape[0], niou, dtype=torch.bool, device=device)
