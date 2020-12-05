@@ -623,8 +623,14 @@ def non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, merge=False, 
     min_wh, max_wh = 2, 4096  # (pixels) minimum and maximum box width and height
     max_det = 300  # maximum number of detections per image
     time_limit = 10.0  # seconds to quit after
+
+    # Ben: Interesting concept that says that a box is only a valid prediction if there is at least another box prediction with high
+    # enough IoU. Having flag set to true gives more conservative predictions, less false positives theoretically. 
     redundant = True  # require redundant detections
     multi_label = nc > 1  # multiple labels per box (adds 0.5ms/img)
+
+    # Ben: Overwriting multi_label: doesn't seem to make sense for us. A cone can only be either blue or yellow.
+    multi_label = False
 
     t = time.time()
     output = [None] * prediction.shape[0]
@@ -643,13 +649,13 @@ def non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, merge=False, 
         # Box (center x, center y, width, height) to (x1, y1, x2, y2)
         box = xywh2xyxy(x[:, :4])
 
-        # Detections matrix nx6 (xyxy, conf, cls)
+        # Detections matrix nx6 (xyxy, conf, cls, depth)
         if multi_label:
             i, j = (x[:, 6:] > conf_thres).nonzero().t()
             x = torch.cat((box[i], x[i, j + 6, None], j[:, None].float(), x[i, 4, None]), 1)
         else:  # best class only
             conf, j = x[:, 6:].max(1, keepdim=True)
-            x = torch.cat((box, conf, j.float()), 1)[conf.view(-1) > conf_thres]
+            x = torch.cat((box, conf, j.float(), x[:,4, None]), 1)[conf.view(-1) > conf_thres]
 
         # Filter by class
         if classes:
