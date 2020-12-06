@@ -30,7 +30,9 @@ def command_line_parser():
         '--pred_base_folder',
         default='/home/benjin/Development/notes/tmp_data/inference/output',
         type=str,
-        help='Specify local path of the folder that contains the sensor fusion predictions')
+        help=
+        'Specify local path of the folder that contains the sensor fusion predictions'
+    )
 
     parser.add_argument(
         '-l',
@@ -42,7 +44,7 @@ def command_line_parser():
 
     parser.add_argument('-m',
                         '--mode',
-                        default='metrics',
+                        default='vis',
                         type=str,
                         choices=['vis, metrics'],
                         help='Specify what the program should do')
@@ -66,10 +68,12 @@ def command_line_parser():
 
     return cfg
 
+
 def check_cfg(cfg):
     if cfg.max_distance % cfg.interval_length != 0:
         print("Command line arguments invalid!")
         sys.exit()
+
 
 def match_cone_arrays(cfg):
     def duplicate_gt(gt_cone_array_path, gt_cone_array_paths):
@@ -84,13 +88,17 @@ def match_cone_arrays(cfg):
     def get_sf_cone_array_path(cfg, gt_cone_array_path):
         cameras = ["left", "right", "forward"]
         pred_cone_array_paths = []
-        
-        pred_cone_array_path = os.path.join(cfg.pred_base_folder, gt_cone_array_path[1:])
-        
+
+        pred_cone_array_path = os.path.join(cfg.pred_base_folder,
+                                            gt_cone_array_path[1:])
+
         pred_cone_array_path = pred_cone_array_path.replace(
             "_cones_corrected", "_camera_filtered")
 
-        which_camera = [camera for camera in cameras if pred_cone_array_path.find(camera) > 0][0]
+        which_camera = [
+            camera for camera in cameras
+            if pred_cone_array_path.find(camera) > 0
+        ][0]
 
         for camera in cameras:
             p = pred_cone_array_path.replace(which_camera, camera)
@@ -172,13 +180,14 @@ def match_cone_arrays(cfg):
             except AttributeError:
                 camera_data = yaml.load(camera_f, Loader=yaml.Loader)
 
-        calib['camera_matrix'] = load_rosparam_mat(camera_data, 'camera_matrix')
+        calib['camera_matrix'] = load_rosparam_mat(camera_data,
+                                                   'camera_matrix')
         calib['distortion_coefficients'] = load_rosparam_mat(
             camera_data, 'distortion_coefficients')
         calib['image_width'] = camera_data['image_width']
         calib['image_height'] = camera_data['image_height']
         calib['projection_matrix'] = load_rosparam_mat(camera_data,
-                                                    'projection_matrix')
+                                                       'projection_matrix')
 
         return calib
 
@@ -197,7 +206,8 @@ def match_cone_arrays(cfg):
     sf_cone_array_paths = []
     counter_1, counter_2, counter_3 = 0, 0, 0
     for label_path in orig_label_paths:
-        label_path = os.path.join(cfg.gt_base_folder, label_path[index:].rstrip())
+        label_path = os.path.join(cfg.gt_base_folder,
+                                  label_path[index:].rstrip())
         if os.path.exists(label_path):
             gt_cone_array_path = label_path.replace('labels',
                                                     'cones_corrected').replace(
@@ -207,9 +217,9 @@ def match_cone_arrays(cfg):
                     gt_cone_array_path, gt_cone_array_paths):
                 # - [ ]  Filter out duplicates, meaning gt cone arrays that belong to the same timestamp
                 # - [ ]  For each gt_cone_array, find the corresponding lidar file path, skip if not found
-                sf_cone_array_path = get_sf_cone_array_path(cfg, 
-                    gt_cone_array_path)
-                if sf_cone_array_paths is not None:
+                sf_cone_array_path = get_sf_cone_array_path(
+                    cfg, gt_cone_array_path)
+                if sf_cone_array_path is not None:
                     gt_cone_array_paths.append(gt_cone_array_path)
                     sf_cone_array_paths.append(sf_cone_array_path)
                 else:
@@ -232,8 +242,8 @@ def match_cone_arrays(cfg):
 
     # All gt cone arrays are in their respective camera frame
     counter = 0
-    for gt_cone_array_path, sf_cone_array_path in zip(
-            gt_cone_array_paths, sf_cone_array_paths):
+    for gt_cone_array_path, sf_cone_array_path in zip(gt_cone_array_paths,
+                                                      sf_cone_array_paths):
         # counter += 1
         # if counter > 1:
         #     break
@@ -243,13 +253,14 @@ def match_cone_arrays(cfg):
                                               cfg.gt_base_folder)
 
         T_mrh_ego = get_T_mrh_to_ego(
-            os.path.join(cfg.gt_base_folder, test_day, "static_transformations"))
+            os.path.join(cfg.gt_base_folder, test_day,
+                         "static_transformations"))
 
         camera = extract_camera_from_path(gt_cone_array_path)
 
         T_camera_mrh = get_T_camera_to_mrh(
-            os.path.join(cfg.gt_base_folder, test_day, "static_transformations"),
-            camera)
+            os.path.join(cfg.gt_base_folder, test_day,
+                         "static_transformations"), camera)
 
         T_camera_ego = T_mrh_ego @ T_camera_mrh
 
@@ -270,62 +281,94 @@ def match_cone_arrays(cfg):
         sf_cone_array = []
         sf_cone_array_path.sort()
         for p in sf_cone_array_path:
-            img_path = p.replace(cfg.pred_base_folder, "").replace(".bin", ".png")
+            img_path = p.replace(cfg.pred_base_folder,
+                                 "").replace(".bin", ".png")
             img = cv2.imread(img_path)
             h, w, _ = img.shape
-            xywhn_depth_array = np.fromfile(p).reshape(-1, 6)[:, 1:6]
+            cxywhn_depth_array = np.fromfile(p).reshape(-1, 6)
+            c = cxywhn_depth_array[:, 0]
+            xywhn_depth_array = cxywhn_depth_array[:, 1:6]
 
-            xyd_array = np.array([xywhn_depth_array[:,0] * w, xywhn_depth_array[:,1] * h - 0.5 * xywhn_depth_array[:,3], xywhn_depth_array[:,4]]).T 
-            
-            jet = cm = plt.get_cmap('hsv') 
-            cNorm  = colors.Normalize(vmin=0, vmax=xyd_array.shape[0])
+            xyd_array = np.array([
+                xywhn_depth_array[:, 0] * w,
+                xywhn_depth_array[:, 1] * h - 0.5 * xywhn_depth_array[:, 3],
+                xywhn_depth_array[:, 4]
+            ]).T
+
+            jet = cm = plt.get_cmap('hsv')
+            cNorm = colors.Normalize(vmin=0, vmax=xyd_array.shape[0])
             scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=jet)
 
-            for idx, xy in enumerate(xyd_array[:,:2]):
-                cv2.circle(img, tuple(xy.astype(np.int)), 4, tuple( int(s * 255) for s in scalarMap.to_rgba(idx)[:3]), 2)
+            # Convert xywhn to xyxy
+            xywh_array = np.array([
+                xyd_array[:, 0], xyd_array[:, 1], xywhn_depth_array[:, 2] * w,
+                xywhn_depth_array[:, 3] * h
+            ]).T
+            xyxy_array = np.array([
+                xyd_array[:, 0] - xywh_array[:, 2] / 2,
+                xyd_array[:, 1] - xywh_array[:, 3] / 2,
+                xyd_array[:, 0] + xywh_array[:, 2] / 2,
+                xyd_array[:, 1] + xywh_array[:, 3] / 2
+            ]).T
 
-            which_camera = [camera for camera in ["forward", "left", "right"] if img_path.find(camera) > 0][0]
+            for idx, xyxy in enumerate(xyxy_array):
+                # cv2.circle(
+                #     img, tuple(xy.astype(np.int)), 4,
+                #     tuple(int(s * 255) for s in scalarMap.to_rgba(idx)[:3]), 2)
+                color = (255, 0, 0) if c[idx] else (0, 0, 255)
+                cv2.rectangle(img,
+                              tuple(xyxy[:2].astype(np.int)),
+                              tuple(xyxy[2:4].astype(np.int)),
+                              color,
+                              thickness=2,
+                              lineType=cv2.LINE_AA)
 
-            print(xyd_array)
-            print(xywhn_depth_array)
+            which_camera = [
+                camera for camera in ["forward", "left", "right"]
+                if img_path.find(camera) > 0
+            ][0]
+
+            #print(xyd_array)
+            #print(xywhn_depth_array)
             cv2.imshow(which_camera, img)
             cv2.waitKey(0)
             cv2.destroyAllWindows()
             #cv2.imwrite(p.replace("bin","png"), img)
 
-            
+            # 2.2) For each prediction
+            # 1) convert the pixel + depth into x,y,z in camera frame
 
-             
-            # 2.2) For each prediction 
-            # 1) convert the pixel + depth into x,y,z in camera frame 
-            
-            cam_calib_file = os.path.join(os.path.dirname(img_path), "../../../static_transformations", which_camera + ".yaml")
+            cam_calib_file = os.path.join(os.path.dirname(img_path),
+                                          "../../../static_transformations",
+                                          which_camera + ".yaml")
             K = load_camera_calib(cam_calib_file)["camera_matrix"]
-            h_xy = np.hstack((xyd_array[:,:2], np.ones((xyd_array.shape[0], 1))))
-            d = xyd_array[:,2]
+            h_xy = np.hstack((xyd_array[:, :2], np.ones(
+                (xyd_array.shape[0], 1))))
+            d = xyd_array[:, 2]
             c_xyz_s = np.linalg.inv(K) @ h_xy.T
-            scalars =  d / np.linalg.norm(c_xyz_s.T, axis=1)
+            scalars = d / np.linalg.norm(c_xyz_s.T, axis=1)
             c_xyz = (c_xyz_s * scalars).T
 
             # 2) transform to ego frame
             T_camera_mrh = get_T_camera_to_mrh(
-                os.path.join(cfg.gt_base_folder, test_day, "static_transformations"),
-                which_camera)
+                os.path.join(cfg.gt_base_folder, test_day,
+                             "static_transformations"), which_camera)
 
             T_camera_ego = T_mrh_ego @ T_camera_mrh
 
             h_c_xyz = np.hstack((c_xyz, np.ones((c_xyz.shape[0], 1))))
-            e_xyz = (T_camera_ego @ h_c_xyz.T).T[:,:3]
+            e_xyz = (T_camera_ego @ h_c_xyz.T).T[:, :3]
 
             # 2.3) Concatenate cone arrays
             sf_cone_array.append(e_xyz)
 
         cone_arrays_dict["sf"].append(sf_cone_array)
         pbar.update(1)
-    
+
     pbar.close()
 
     return cone_arrays_dict
+
 
 def visualize_cone_arrays(cfg):
     cone_arrays_dict = match_cone_arrays(cfg)
@@ -342,7 +385,8 @@ def visualize_cone_arrays(cfg):
             # Project the gt cones onto the xy plane
             gt_cone_array_projected = np.hstack(
                 (cone_arrays_dict["gt"][cone_array_idx][:, 1:3],
-                np.zeros((cone_arrays_dict["gt"][cone_array_idx].shape[0], 1))))
+                 np.zeros(
+                     (cone_arrays_dict["gt"][cone_array_idx].shape[0], 1))))
             # Artificially make a point to have a z!=0 to counter the open3d visualization bug
             gt_cone_array_projected[-1, -1] = 1
             pcd_gt.points = o3d.utility.Vector3dVector(gt_cone_array_projected)
@@ -355,6 +399,7 @@ def visualize_cone_arrays(cfg):
             o3d.visualization.draw_geometries([pcd_sf, pcd_gt, mesh_frame])
 
     print("Done")
+
 
 def calculate_metrics(cfg):
     MAX_DIST_PREDICTED_TO_GT_CONE = 0.5
@@ -370,7 +415,7 @@ def calculate_metrics(cfg):
             cone_arrays_dict["gt"][idx][:, 1:])
         gt_cone_array_tree = o3d.geometry.KDTreeFlann(gt_cone_array)
 
-        tmp = np.zeros((0,3))
+        tmp = np.zeros((0, 3))
         for sf_cone_array_ in cone_arrays_dict["sf"][idx]:
             tmp = np.vstack((tmp, sf_cone_array_))
         cone_arrays_dict["sf"][idx] = tmp
@@ -399,10 +444,12 @@ def calculate_metrics(cfg):
             depth_metric[1, idx] = depth_metric[1, idx] / depth_metric[0, idx]
 
     plt.style.use("seaborn")
-    dist_ranges = np.linspace(0, cfg.max_distance, int(cfg.max_distance/cfg.interval_length + 1)).astype(np.int).tolist()
+    dist_ranges = np.linspace(0, cfg.max_distance,
+                              int(cfg.max_distance / cfg.interval_length +
+                                  1)).astype(np.int).tolist()
     x_dist_ranges = [
         str(dist_ranges[i]) + "-" + str(dist_ranges[i + 1])
-        for i in range(len(dist_ranges)-1)
+        for i in range(len(dist_ranges) - 1)
     ]
     y_num_predictions = depth_metric[0, :]
     y_average_dist_error = depth_metric[1, :]
