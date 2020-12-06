@@ -18,6 +18,7 @@ Pillow = "*"
 PyYAML = ">=5.3"
 open3d = "*"
 matplotlib = "*"
+yapf = "*"
 
 [requires]
 python_version = "3.6"

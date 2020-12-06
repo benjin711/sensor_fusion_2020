@@ -1,0 +1,10 @@
+/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-07-05_tuggen/data/autocross_2020-07-05-12-35-31/forward_labels/00000391.txt
+/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-07-05_tuggen/data/autocross_2020-07-05-12-35-31/left_labels/00000391.txt
+/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-07-05_tuggen/data/autocross_2020-07-05-12-35-31/right_labels/00000391.txt
+/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-07-05_tuggen/data/autocross_2020-07-05-11-58-07/forward_labels/00000762.txt
+/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-07-05_tuggen/data/autocross_2020-07-05-11-58-07/left_labels/00000762.txt
+/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-07-05_tuggen/data/autocross_2020-07-05-11-58-07/right_labels/00000762.txt
+/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-07-05_tuggen/data/autocross_2020-07-05-11-58-07/forward_labels/00000163.txt
+/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-07-05_tuggen/data/autocross_2020-07-05-11-58-07/left_labels/00000163.txt
+/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-07-05_tuggen/data/autocross_2020-07-05-11-58-07/right_labels/00000163.txt
+/media/benjin/Samsung_T5/AMZ/sensor_fusion_data/2020-08-02_tuggen/data/autocross_2020-08-02-12-01-19/forward_labels/00000213.txt
