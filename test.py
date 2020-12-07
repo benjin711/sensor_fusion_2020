@@ -9,11 +9,11 @@ from utils.datasets import *
 
 def test(
         data,
+        conf_thres,
+        iou_thres,
         weights=None,
         batch_size=16,
-        imgsz=640,
-        conf_thres,
-        iou_thres,  # for NMS
+        imgsz=640,  # for NMS
         save_json=False,
         single_cls=False,
         augment=False,
