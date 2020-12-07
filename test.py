@@ -450,11 +450,11 @@ if __name__ == '__main__':
 
     if opt.task in ['val', 'test']:  # run normally
         test(opt.data,
+             opt.conf_thres,
+             opt.iou_thres,
              opt.weights,
              opt.batch_size,
              opt.img_size,
-             opt.conf_thres,
-             opt.iou_thres,
              opt.save_json,
              opt.single_cls,
              opt.augment,
