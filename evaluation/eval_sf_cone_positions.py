@@ -28,7 +28,7 @@ def command_line_parser():
     parser.add_argument(
         '-pr',
         '--pred_base_folder',
-        default='/home/benjin/Development/notes/tmp_data/inference/output',
+        default='/home/benjin/Development/notes/tmp_data/inference_fp/output',
         type=str,
         help=
         'Specify local path of the folder that contains the sensor fusion predictions'
@@ -244,9 +244,10 @@ def match_cone_arrays(cfg):
     counter = 0
     for gt_cone_array_path, sf_cone_array_path in zip(gt_cone_array_paths,
                                                       sf_cone_array_paths):
-        # counter += 1
-        # if counter > 1:
-        #     break
+        if cfg.mode == "vis":
+            counter += 1
+            if counter > 10:
+                break
 
         # 1) Bring the gt cone arrays in the egomotion frame
         test_day = extract_test_day_from_path(gt_cone_array_path,
@@ -328,6 +329,9 @@ def match_cone_arrays(cfg):
                 if img_path.find(camera) > 0
             ][0]
 
+            #### QUICK HACK TO ONLY INCLUDE RIGHT AND LEFT SF CONE ARRAYS
+            if which_camera == "forward":
+                continue
             #print(xyd_array)
             #print(xywhn_depth_array)
             cv2.imshow(which_camera, img)
@@ -376,27 +380,31 @@ def visualize_cone_arrays(cfg):
 
     for cone_array_idx in range(num_cone_arrays):
         for idx in range(3):
-            pcd_sf = o3d.geometry.PointCloud()
-            pcd_sf.points = o3d.utility.Vector3dVector(
-                cone_arrays_dict["sf"][cone_array_idx][idx])
-            pcd_sf.paint_uniform_color([1.0, 0.1, 0.1])
+            try:
+                pcd_sf = o3d.geometry.PointCloud()
+                pcd_sf.points = o3d.utility.Vector3dVector(
+                    cone_arrays_dict["sf"][cone_array_idx][idx])
+                pcd_sf.paint_uniform_color([1.0, 0.1, 0.1])
 
-            pcd_gt = o3d.geometry.PointCloud()
-            # Project the gt cones onto the xy plane
-            gt_cone_array_projected = np.hstack(
-                (cone_arrays_dict["gt"][cone_array_idx][:, 1:3],
-                 np.zeros(
-                     (cone_arrays_dict["gt"][cone_array_idx].shape[0], 1))))
-            # Artificially make a point to have a z!=0 to counter the open3d visualization bug
-            gt_cone_array_projected[-1, -1] = 1
-            pcd_gt.points = o3d.utility.Vector3dVector(gt_cone_array_projected)
-            pcd_gt.paint_uniform_color([0.1, 0.9, 0.1])
+                pcd_gt = o3d.geometry.PointCloud()
+                # Project the gt cones onto the xy plane
+                gt_cone_array_projected = np.hstack(
+                    (cone_arrays_dict["gt"][cone_array_idx][:, 1:3],
+                     np.zeros((cone_arrays_dict["gt"][cone_array_idx].shape[0],
+                               1))))
+                # Artificially make a point to have a z!=0 to counter the open3d visualization bug
+                gt_cone_array_projected[-1, -1] = 1
+                pcd_gt.points = o3d.utility.Vector3dVector(
+                    gt_cone_array_projected)
+                pcd_gt.paint_uniform_color([0.1, 0.9, 0.1])
 
-            # Coordinate Frame
-            mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
-                size=0.6, origin=[0, 0, 0])
+                # Coordinate Frame
+                mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
+                    size=0.6, origin=[0, 0, 0])
 
-            o3d.visualization.draw_geometries([pcd_sf, pcd_gt, mesh_frame])
+                o3d.visualization.draw_geometries([pcd_sf, pcd_gt, mesh_frame])
+            except:
+                pass
 
     print("Done")
 

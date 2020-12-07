@@ -774,6 +774,10 @@ def non_max_suppression(prediction,
 
         x = x[i]
 
+        if x.shape[0] == 0:
+            output[xi] = x
+            continue
+
         # "Box inside another box" filtering
         w, h = np.array(x[:, 2, None] -
                         x[:, 0, None]), np.array(x[:, 3, None] - x[:, 1, None])
@@ -803,6 +807,8 @@ def non_max_suppression(prediction,
         boxes, scores = output[xi][:, :4] + output[xi][:, 5:6] * max_wh, output[
             xi][:, 4]  # boxes (offset by class), scores
         i = torchvision.ops.boxes.nms(boxes, scores, iou_thres)
+
+        # Need path of image
 
         # img = np.ones((640, 2592, 3)).astype(np.uint8)
         # for idx, xyxy in enumerate(output[xi][i]):
