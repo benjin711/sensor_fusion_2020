@@ -44,7 +44,8 @@ class Detect(nn.Module):
                     self.grid[i] = self._make_grid(nx, ny).to(x[i].device)
 
                 y = x[i]
-                y[..., 0:4] = y[..., 0:4].sigmoid()
+                y[..., 0:5] = y[..., 0:5].sigmoid()
+                y[..., 4] = y[..., 4]*255.0 # Rescale depth
                 y[..., 5:] = y[..., 5:].sigmoid()
                 y[..., 0:2] = (y[..., 0:2] * 2. - 0.5 + self.grid[i].to(x[i].device)) * self.stride[i]  # xy
                 y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh

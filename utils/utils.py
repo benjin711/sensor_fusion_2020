@@ -513,7 +513,7 @@ def compute_loss(p, targets, model):  # predictions, targets, model
             tobj[b, a, gj, gi] = (1.0 - model.gr) + model.gr * giou.detach().clamp(0).type(tobj.dtype)  # giou ratio
 
             # Depth
-            pdepth = ps[:, 4]
+            pdepth = ps[:, 4].sigmoid() * 255.0
 
             # Class
             if model.nc > 1:  # cls loss (only if multiple classes)
@@ -525,8 +525,6 @@ def compute_loss(p, targets, model):  # predictions, targets, model
             # with open('targets.txt', 'a') as file:
             #     [file.write('%11.5g ' * 4 % tuple(x) + '\n') for x in torch.cat((txy[i], twh[i]), 1)]
 
-            # ldepth_per_box = BHdepth.forward(tdepth[i], pdepth)
-            # ldepth += ldepth_per_box.sum() if red == 'sum' else ldepth_per_box.mean()
             ldepth += BHdepth.forward(pdepth, tdepth[i])
         lobj += BCEobj(pi[..., 5], tobj) * balance[i]  # obj loss
 
