@@ -25,3 +25,6 @@ runs
 
 # Personal Debug Folder
 .debug
+
+# Inference Folder
+inference
