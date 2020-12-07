@@ -103,7 +103,7 @@ class Model(nn.Module):
 
 
 
-    def forward(self, x, augment=False, profile=False, rgb_drop=False):
+    def forward(self, x, augment=False, profile=False):
         if augment:
             img_size = x.shape[-2:]  # height, width
             s = [0.83, 0.67]  # scales
@@ -113,25 +113,20 @@ class Model(nn.Module):
                                     torch_utils.scale_img(x, s[1]),  # scale
                                     )):
                 # cv2.imwrite('img%g.jpg' % i, 255 * xi[0].numpy().transpose((1, 2, 0))[:, :, ::-1])
-                y.append(self.forward_once(xi, rgb_drop=rgb_drop)[0])
+                y.append(self.forward_once(xi)[0])
 
             y[1][..., :4] /= s[0]  # scale
             y[1][..., 0] = img_size[1] - y[1][..., 0]  # flip lr
             y[2][..., :4] /= s[1]  # scale
             return torch.cat(y, 1), None  # augmented inference, train
         else:
-            return self.forward_once(x, profile, rgb_drop=rgb_drop)
+            return self.forward_once(x, profile)
             # single-scale inference, train
 
-    def forward_once(self, x, profile=False, rgb_drop=False):
+    def forward_once(self, x, profile=False):
         # Split RGB and dm. Conv each independently first.
-        _, _, w, h = x.shape
-        img_mask = \
-            torch.zeros((1, 1, w, h)) if rgb_drop else torch.ones((1, 1, w, h))
-
-        input_rgb = torch.cat((x[:, :3, :, :], img_mask), dim=-3)
-        input_dm = x[:, 3:, :, :]
-
+        input_rgb = x[:, :4, :, :]
+        input_dm = x[:, 4:, :, :]
         x_rgb = self.conv_rgb(input_rgb)
         x_dm = self.conv_dm(input_dm)
         x = torch.cat([x_rgb, x_dm], dim=1)
