@@ -673,8 +673,10 @@ def build_targets(p, targets, model):
 
 
 def non_max_suppression(prediction,
-                        conf_thres=0.1,
-                        iou_thres=0.6,
+                        paths,
+                        imgs,
+                        conf_thres,
+                        iou_thres,
                         merge=False,
                         classes=None,
                         agnostic=False):
@@ -705,7 +707,13 @@ def non_max_suppression(prediction,
 
     t = time.time()
     output = [None] * prediction.shape[0]
-    for xi, x in enumerate(prediction):  # image index, image inference
+    counter = 0
+    for xi, (x, path,
+             img) in enumerate(zip(prediction, paths,
+                                   imgs)):  # image index, image inference
+        counter += 1
+        if counter > 4:
+            sys.exit()
         # Apply constraints
         # x[((x[..., 2:4] < min_wh) | (x[..., 2:4] > max_wh)).any(1), 4] = 0  # width-height
         x = x[xc[xi]]  # confidence
@@ -804,28 +812,44 @@ def non_max_suppression(prediction,
 
         output[xi] = x[np.unique(p_indices)]
 
-        boxes, scores = output[xi][:, :4] + output[xi][:, 5:6] * max_wh, output[
-            xi][:, 4]  # boxes (offset by class), scores
-        i = torchvision.ops.boxes.nms(boxes, scores, iou_thres)
+        # boxes, scores = output[xi][:, :4] + output[xi][:, 5:6] * max_wh, output[
+        #     xi][:, 4]  # boxes (offset by class), scores
+        # i = torchvision.ops.boxes.nms(boxes, scores, iou_thres)
 
         # Need path of image
+        # img = cv2.imread(path)
+        # scale_percent = 50  # percent of original size
+        # scale_percent_width = 45
+        # width = int(img.shape[1] * scale_percent / 100)
+        # height = int(img.shape[0] * scale_percent / 100)
+        # dim = (1280, 320)
+        # # resize image
+        # img = cv2.resize(img, dim)
 
-        # img = np.ones((640, 2592, 3)).astype(np.uint8)
+        #img_ = np.ones((320, 1280, 3)).astype(np.uint8)
+        # img = np.array(img[:3] * 255).astype(np.uint8)
+        # img = np.moveaxis(img, 0, -1)
+        # gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         # for idx, xyxy in enumerate(output[xi][i]):
         #     color = (0, 0, 255) if xyxy[5] else (255, 255, 0)
-        #     cv2.rectangle(img,
-        #                   tuple(xyxy[:2]),
-        #                   tuple(xyxy[2:4]),
-        #                   color,
+        #     a = tuple(np.array(xyxy[:2]).astype(int))
+        #     b = tuple(np.array(xyxy[2:4]).astype(int))
+        #     cv2.rectangle(img=img,
+        #                   pt1=a,
+        #                   pt2=b,
+        #                   color=color,
         #                   thickness=2,
         #                   lineType=cv2.LINE_AA)
 
-        # cv2.imshow("bla", img)
+        # cv2.imshow(path, img)
         # cv2.waitKey(0)
         # cv2.destroyAllWindows()
+        # cv2.imwrite(
+        #     os.path.basename(path) +
+        #     "_c{:.4f}_iou{:.4f}".format(conf_thres, iou_thres) + ".png", img)
 
-        if (time.time() - t) > time_limit:
-            break  # time limit exceeded
+        # if (time.time() - t) > time_limit:
+        #     break  # time limit exceeded
 
     return output
 
