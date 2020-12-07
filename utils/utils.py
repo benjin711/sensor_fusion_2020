@@ -848,8 +848,8 @@ def non_max_suppression(prediction,
         #     os.path.basename(path) +
         #     "_c{:.4f}_iou{:.4f}".format(conf_thres, iou_thres) + ".png", img)
 
-        # if (time.time() - t) > time_limit:
-        #     break  # time limit exceeded
+        if (time.time() - t) > time_limit:
+            break  # time limit exceeded
 
     return output
 
