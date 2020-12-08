@@ -79,7 +79,7 @@ def create_dataloader(path,
     batch_size = min(batch_size, len(dataset))
     nw = min(
         [os.cpu_count() // world_size, batch_size if batch_size > 1 else 0,
-         8])  # number of workers
+         4])  # number of workers
     train_sampler = torch.utils.data.distributed.DistributedSampler(
         dataset) if local_rank != -1 else None
     dataloader = torch.utils.data.DataLoader(
