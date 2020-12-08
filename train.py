@@ -78,7 +78,7 @@ def train(hyp, tb_writer, opt, device):
             os.remove(f)
 
     # Create model
-    model = Model(opt.cfg, ch=5, nc=nc).to(device)
+    model = Model(opt.cfg, ch=6, nc=nc).to(device)
 
     # Image sizes
     gs = int(max(model.stride))  # grid size (max stride)
@@ -268,7 +268,14 @@ def train(hyp, tb_writer, opt, device):
             imgs[:, 3, :, :] /= 255.0 # Rescale depth channel. Max depth found in inputs was 202 m
 
             # Random RGB drop
+            b, _, w, h = imgs.shape
             rgb_drop = random.choice([True, False]) and opt.rgb_drop
+            if rgb_drop:
+                rgbs = torch.zeros(b, 4, w, h).to(imgs.device)
+            else:
+                rgbs = torch.cat((imgs[:, :3, :, :],
+                                  torch.ones(b, 1, w, h).to(imgs.device)), dim=1)
+            imgs = torch.cat((rgbs, imgs[:, 3:, ::]), dim=1)
 
             # Warmup
             if ni <= nw:
@@ -301,7 +308,7 @@ def train(hyp, tb_writer, opt, device):
             if imgs.shape[0] < opt.batch_size:
                 pass
 
-            pred = model(imgs, rgb_drop=rgb_drop)
+            pred = model(imgs)
 
             # Loss
             loss, loss_items = compute_loss(pred, targets.to(device), model)  # scaled by batch_size

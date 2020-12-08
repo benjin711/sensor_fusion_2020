@@ -87,9 +87,16 @@ def test(data,
 
     for batch_i, (img, targets, paths, shapes) in enumerate(tqdm(dataloader, desc=s)):
         img = img.to(device, non_blocking=True)
-        img = img.half() if half else img.float()  # uint8 to fp16/32
+#        img = img.half() if half else img.float()  # uint8 to fp16/32
         img[:, :3, :, :] /= 255.0 # Rescale RGB
         img[:, 3, :, :] /= 255.0 # Rescale depth
+
+        b, _, w, h = img.shape
+        rgbs = torch.cat((img[:, :3, :, :],
+                          torch.ones(b, 1, w, h).to(img.device)), dim=1)
+        img = torch.cat((rgbs, img[:, 3:, ::]), dim=1)
+        img = img.half() if half else img.float()  # uint8 to fp16/32
+        
         targets = targets.to(device)
         nb, _, height, width = img.shape  # batch size, channels, height, width
         whwh = torch.Tensor([width, height, width, height]).to(device)
