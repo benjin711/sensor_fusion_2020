@@ -210,10 +210,16 @@ class ConvPooling(nn.Module):
     def forward(self, x, m):
         x = torch.mul(x, m)
         x = self.conv(x)
-        d = torch.nn.functional.conv2d(m,
-                                       weight=self.mask_ones,
-                                       padding=self.pad,
-                                       stride=1) + self.epison
+        if isinstance(x, torch.cuda.HalfTensor):
+            d = torch.nn.functional.conv2d(m,
+                                           weight=self.mask_ones.to(x.device).half(),
+                                           padding=self.pad,
+                                           stride=1) + self.epison
+        else:
+            d = torch.nn.functional.conv2d(m,
+                                           weight=self.mask_ones.to(x.device),
+                                           padding=self.pad,
+                                           stride=1) + self.epison
         y = torch.div(x, d)
         m = self.pool(m)
         return y, m
