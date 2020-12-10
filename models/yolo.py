@@ -44,7 +44,8 @@ class Detect(nn.Module):
                     self.grid[i] = self._make_grid(nx, ny).to(x[i].device)
 
                 y = x[i]
-                y[..., 0:4] = y[..., 0:4].sigmoid()
+                y[..., 0:5] = y[..., 0:5].sigmoid()
+                y[..., 4] = y[..., 4]*255.0 # Rescale depth
                 y[..., 5:] = y[..., 5:].sigmoid()
                 y[..., 0:2] = (y[..., 0:2] * 2. - 0.5 + self.grid[i].to(x[i].device)) * self.stride[i]  # xy
                 y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh
@@ -82,8 +83,9 @@ class Model(nn.Module):
         m = self.model[-1]  # Detect()
 
         # Initial convs
-        self.conv_rgb = nn.Conv2d(3, 16, 3)
-        self.conv_dm = nn.Conv2d(2, 16, 3)
+        self.conv_rgb = nn.Conv2d(4, 16, 3, padding=1)
+#        self.conv_dm = nn.Conv2d(2, 16, 3)
+        self.conv_dm = SparseConv(1, 16)
 
         if isinstance(m, Detect):
             s = 128  # 2x min stride
@@ -120,15 +122,19 @@ class Model(nn.Module):
             y[2][..., :4] /= s[1]  # scale
             return torch.cat(y, 1), None  # augmented inference, train
         else:
-            return self.forward_once(x, profile)  # single-scale inference, train
+            return self.forward_once(x, profile)
+            # single-scale inference, train
 
     def forward_once(self, x, profile=False):
         # Split RGB and dm. Conv each independently first.
-        input_rgb = x[:, :3, :, :]
-        input_dm = x[:, 3:, :, :]
+        input_rgb = x[:, :4, :, :]
+        input_dm = x[:, 4:, :, :]
+        input_di = x[:, 4:-1, :, :]
+        input_m = x[:, -1, :, :].unsqueeze(1)
 
+#        next(model.parameters()).is_cuda
         x_rgb = self.conv_rgb(input_rgb)
-        x_dm = self.conv_dm(input_dm)
+        x_dm = self.conv_dm(input_di, input_m)
         x = torch.cat([x_rgb, x_dm], dim=1)
 
         y, dt = [], []  # outputs

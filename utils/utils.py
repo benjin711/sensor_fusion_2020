@@ -573,7 +573,7 @@ def compute_loss(p, targets, model):  # predictions, targets, model
                             tobj.dtype)  # giou ratio
 
             # Depth
-            pdepth = ps[:, 4]
+            pdepth = ps[:, 4].sigmoid() * 255.0
 
             # Class
             if model.nc > 1:  # cls loss (only if multiple classes)
@@ -585,7 +585,8 @@ def compute_loss(p, targets, model):  # predictions, targets, model
             # with open('targets.txt', 'a') as file:
             #     [file.write('%11.5g ' * 4 % tuple(x) + '\n') for x in torch.cat((txy[i], twh[i]), 1)]
 
-            ldepth += BHdepth.forward(tdepth[i], pdepth)
+            #ldepth += BHdepth.forward(tdepth[i], pdepth)
+            ldepth += BHdepth.forward(pdepth, tdepth[i])
         lobj += BCEobj(pi[..., 5], tobj) * balance[i]  # obj loss
 
     s = 3 / np  # output count scaling
