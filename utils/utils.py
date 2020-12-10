@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from copy import copy
 from pathlib import Path
 from sys import platform
+import copy
 
 import cv2
 import matplotlib
@@ -261,6 +262,7 @@ def scale_coords(img1_shape, coords, img0_shape, ratio_pad=None):
         gain = ratio_pad[0][0]
         pad = ratio_pad[1]
 
+    coords = copy.deepcopy(coords)
     coords[:, [0, 2]] -= pad[0]  # x padding
     coords[:, [1, 3]] -= pad[1]  # y padding
     coords[:, :4] /= gain

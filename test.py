@@ -6,6 +6,30 @@ import sys
 from models.experimental import *
 from utils.datasets import *
 
+# Hyperparameters
+hyp = {
+    'optimizer': 'SGD',  # ['adam', 'SGD', None] if none, default is SGD
+    'lr0': 0.01,  # initial learning rate (SGD=1E-2, Adam=1E-3)
+    'momentum': 0.937,  # SGD momentum/Adam beta1
+    'weight_decay': 5e-4,  # optimizer weight decay
+    'depth': 1e-2,  # depth loss gain TODO: tune it, or learn it
+    'giou': 0.05,  # giou loss gain
+    'cls': 5,  # cls loss gain
+    'cls_pw': 1.0,  # cls BCELoss positive_weight
+    'obj': 1.0,  # obj loss gain (*=img_size/320 if img_size != 320)
+    'obj_pw': 1.0,  # obj BCELoss positive_weight
+    'iou_t': 0.20,  # iou training threshold
+    'anchor_t': 4.0,  # anchor-multiple threshold
+    'fl_gamma': 0.0,  # focal loss gamma (efficientDet default is gamma=1.5)
+    'hsv_h': 0.015,  # image HSV-Hue augmentation (fraction)
+    'hsv_s': 0.7,  # image HSV-Saturation augmentation (fraction)
+    'hsv_v': 0.4,  # image HSV-Value augmentation (fraction)
+    'degrees': 0.0,  # image rotation (+/- deg)
+    'translate': 0.0,  # image translation (+/- fraction)
+    'scale': 0.5,  # image scale (+/- gain)
+    'shear': 0.0
+}  # image shear (+/- deg)
+
 
 def test(
         data,
@@ -90,7 +114,7 @@ def test(
 
         dataloader, dataset = \
         create_dataloader(path, imgsz, batch_size, model.stride.max(), opt,
-                          hyp=None, augment=False, cache=False, pad=0,
+                          hyp=hyp, augment=False, cache=False, pad=0,
                           rect=True)
         tmp_img = dataset[0][0]
         img_shape = np.array(tmp_img.detach().cpu().numpy().shape[1:])
@@ -206,14 +230,14 @@ def test(
                 stem = str(Path(paths[si]).stem) + ".txt"
                 os.makedirs(base, exist_ok=True)
 
-                pred[:, :4] = scale_coords(img[si].shape[1:], pred[:, :4],
-                                           shapes[si][0],
-                                           shapes[si][1])  # to original
+                pred_tmp = scale_coords(img[si].shape[1:], pred[:, :4],
+                                        shapes[si][0],
+                                        shapes[si][1])  # to original
 
                 pred_bin = np.zeros((0, 6))
-                for *xyxy, conf, cls, dpth in pred:
+                for *xyxy, (conf, cls, dpth) in zip(pred_tmp, pred[:, 4:]):
                     curr_cone = np.zeros(6)
-                    xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) /
+                    xywh = (xyxy2xywh(xyxy[0].view(1, 4)) /
                             gn).view(-1).tolist()  # normalized xywh
                     curr_cone[0] = cls
                     curr_cone[1:5] = xywh
@@ -311,7 +335,7 @@ def test(
 
         # Plot images
         # [xywh, depth, obj_prob, class_1_prob, class_2_prob, ... class_nc_prob]
-        if batch_i < 10:
+        if batch_i < 1:
             f = Path(save_dir) / ('test_batch%g_gt.jpg' % batch_i)  # filename
             gt_result = plot_images(img, targets, paths, str(f),
                                     names)  # ground truth
