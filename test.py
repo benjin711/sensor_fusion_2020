@@ -128,6 +128,11 @@ def test(
         whwh = torch.Tensor([width, height, width, height]).to(device)
         total_boxes += targets.shape[0]
 
+        if opt.rgb_drop:
+            img[:, :3, :, :] *= torch.randint(0, 2,
+                                              size=(1, )).to(device,
+                                                             non_blocking=True)
+
         # Disable gradients
         with torch.no_grad():
             # Run model
@@ -299,14 +304,14 @@ def test(
 
         # Plot images
         # [xywh, depth, obj_prob, class_1_prob, class_2_prob, ... class_nc_prob]
-        # if batch_i < 10:
-        #     f = Path(save_dir) / ('test_batch%g_gt.jpg' % batch_i)  # filename
-        #     gt_result = plot_images(img, targets, paths, str(f),
-        #                             names)  # ground truth
-        #     f = Path(save_dir) / ('test_batch%g_pred.jpg' % batch_i)
-        #     pred_result = plot_images(img,
-        #                               output_to_target(output, width, height),
-        #                               paths, str(f), names)  # predictions
+        if batch_i < 10:
+            f = Path(save_dir) / ('test_batch%g_gt.jpg' % batch_i)  # filename
+            gt_result = plot_images(img, targets, paths, str(f),
+                                    names)  # ground truth
+            f = Path(save_dir) / ('test_batch%g_pred.jpg' % batch_i)
+            pred_result = plot_images(img,
+                                      output_to_target(output, width, height),
+                                      paths, str(f), names)  # predictions
 
     if generate_depth_stats:
         plt.figure()
@@ -440,6 +445,9 @@ if __name__ == '__main__':
     parser.add_argument('--save-txt',
                         action='store_true',
                         help='save results to *.txt')
+    parser.add_argument('--rgb_drop',
+                        action='store_true',
+                        help='Inference on lidar only for 50% of the time')
     parser.add_argument('--generate-depth-stats',
                         action='store_true',
                         help='Generate histogram with depth error')
