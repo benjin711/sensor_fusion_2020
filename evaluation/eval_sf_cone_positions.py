@@ -4,6 +4,7 @@ import os
 import re
 import yaml
 import numpy as np
+import pickle
 import cv2
 import pathlib
 import open3d as o3d
@@ -17,6 +18,10 @@ import matplotlib.cm as cmx
 def command_line_parser():
     parser = argparse.ArgumentParser(
         add_help=True, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+    parser.add_argument('--new_data',
+                        action='store_true',
+                        help='Extract new data instead of using cached data')
 
     parser.add_argument(
         '-gt',
@@ -46,7 +51,7 @@ def command_line_parser():
                         '--mode',
                         default='vis',
                         type=str,
-                        choices=['vis, metrics'],
+                        choices=['vis', 'metrics'],
                         help='Specify what the program should do')
 
     parser.add_argument(
@@ -57,6 +62,12 @@ def command_line_parser():
         help=
         'Maximal expected prediction distance. Every prediction above will be discarded.'
     )
+
+    parser.add_argument('-s',
+                        '--save_imgs',
+                        default=0,
+                        type=int,
+                        help='Number of images to save')
 
     parser.add_argument('-i',
                         '--interval_length',
@@ -244,9 +255,9 @@ def match_cone_arrays(cfg):
     counter = 0
     for gt_cone_array_path, sf_cone_array_path in zip(gt_cone_array_paths,
                                                       sf_cone_array_paths):
+
         if cfg.mode == "vis":
-            counter += 1
-            if counter > 10:
+            if counter > 4:
                 break
 
         # 1) Bring the gt cone arrays in the egomotion frame
@@ -334,10 +345,13 @@ def match_cone_arrays(cfg):
                 continue
             #print(xyd_array)
             #print(xywhn_depth_array)
-            cv2.imshow(which_camera, img)
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
-            #cv2.imwrite(p.replace("bin","png"), img)
+            if cfg.mode == "vis":
+                cv2.imshow(which_camera, img)
+                cv2.waitKey(0)
+                cv2.destroyAllWindows()
+
+            if counter < cfg.save_imgs:
+                cv2.imwrite(p.replace("bin", "png"), img)
 
             # 2.2) For each prediction
             # 1) convert the pixel + depth into x,y,z in camera frame
@@ -368,14 +382,29 @@ def match_cone_arrays(cfg):
 
         cone_arrays_dict["sf"].append(sf_cone_array)
         pbar.update(1)
+        counter += 1
 
     pbar.close()
+
+    # Cache cone arrays dict
+    with open("cone_arrays_dict.cache", "w") as f:
+        pickle.dump(cone_arrays_dict, f)
 
     return cone_arrays_dict
 
 
 def visualize_cone_arrays(cfg):
-    cone_arrays_dict = match_cone_arrays(cfg)
+
+    if cfg.new_data:
+        cone_arrays_dict = match_cone_arrays(cfg)
+    else:
+        try:
+            with open("cone_arrays_dict.cache", "r") as f:
+                cone_arrays_dict = pickle.load(f)
+        except:
+            print("No cache file")
+            cone_arrays_dict = match_cone_arrays(cfg)
+
     num_cone_arrays = len(cone_arrays_dict["sf"])
 
     for cone_array_idx in range(num_cone_arrays):
@@ -410,6 +439,17 @@ def visualize_cone_arrays(cfg):
 
 
 def calculate_metrics(cfg):
+
+    if cfg.new_data:
+        cone_arrays_dict = match_cone_arrays(cfg)
+    else:
+        try:
+            with open("cone_arrays_dict.cache", "r") as f:
+                cone_arrays_dict = pickle.load(f)
+        except:
+            print("No cache file")
+            cone_arrays_dict = match_cone_arrays(cfg)
+
     MAX_DIST_PREDICTED_TO_GT_CONE = 0.5
 
     cone_arrays_dict = match_cone_arrays(cfg)
