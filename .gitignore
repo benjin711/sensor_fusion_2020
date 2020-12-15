@@ -25,3 +25,10 @@ runs
 
 # Personal Debug Folder
 .debug
+
+**.png
+**.jpg
+data/full/*
+data/ben_full/*
+data/amz_tiny_full.yaml
+metrics.yaml
