@@ -25,3 +25,11 @@ runs
 
 # Personal Debug Folder
 .debug
+
+# Files that are machine dependent
+data/amz_tiny_full.yaml
+data/ben_full/
+data/full/
+
+# Images
+**.jpg
