@@ -741,7 +741,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                 print('WARNING: %s: %s' % (img, e))
 
         x['hash'] = get_hash(self.label_files + self.img_files)
-        torch.save(x, path)  # save for next time
+        # torch.save(x, path)  # save for next time
         return x
 
     def __len__(self):
