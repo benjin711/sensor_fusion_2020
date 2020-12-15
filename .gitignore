@@ -26,9 +26,17 @@ runs
 # Personal Debug Folder
 .debug
 
-**.png
-**.jpg
-data/full/*
-data/ben_full/*
+# Files that are machine dependent
 data/amz_tiny_full.yaml
+data/ben_full/*
+data/full/*
+
+# Images
+**.jpg
+**.png
+
+# Metrics File
 metrics.yaml
+
+# LSF Files
+lsf**
