@@ -40,3 +40,6 @@ metrics.yaml
 
 # LSF Files
 lsf**
+
+# Cache
+**.cache
