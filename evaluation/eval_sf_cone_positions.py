@@ -387,7 +387,7 @@ def match_cone_arrays(cfg):
     pbar.close()
 
     # Cache cone arrays dict
-    with open("cone_arrays_dict.cache", "wb") as f:
+    with open("sf_cone_arrays_dict.pkl", "wb") as f:
         pickle.dump(cone_arrays_dict, f)
 
     return cone_arrays_dict
@@ -399,7 +399,7 @@ def visualize_cone_arrays(cfg):
         cone_arrays_dict = match_cone_arrays(cfg)
     else:
         try:
-            with open("cone_arrays_dict.cache", "rb") as f:
+            with open("sf_cone_arrays_dict.pkl", "rb") as f:
                 cone_arrays_dict = pickle.load(f)
         except:
             print("No cache file")
@@ -407,33 +407,36 @@ def visualize_cone_arrays(cfg):
 
     num_cone_arrays = len(cone_arrays_dict["sf"])
 
-    for cone_array_idx in range(num_cone_arrays):
-        for idx in range(3):
-            try:
-                pcd_sf = o3d.geometry.PointCloud()
-                pcd_sf.points = o3d.utility.Vector3dVector(
-                    cone_arrays_dict["sf"][cone_array_idx][idx])
-                pcd_sf.paint_uniform_color([1.0, 0.1, 0.1])
+    for idx in range(num_cone_arrays):
+        gt_cone_array = o3d.geometry.PointCloud()
+        gt_cone_array.points = o3d.utility.Vector3dVector(
+            cone_arrays_dict["gt"][idx][:, 1:])
 
-                pcd_gt = o3d.geometry.PointCloud()
-                # Project the gt cones onto the xy plane
-                gt_cone_array_projected = np.hstack(
-                    (cone_arrays_dict["gt"][cone_array_idx][:, 1:3],
-                     np.zeros((cone_arrays_dict["gt"][cone_array_idx].shape[0],
-                               1))))
-                # Artificially make a point to have a z!=0 to counter the open3d visualization bug
-                gt_cone_array_projected[-1, -1] = 1
-                pcd_gt.points = o3d.utility.Vector3dVector(
-                    gt_cone_array_projected)
-                pcd_gt.paint_uniform_color([0.1, 0.9, 0.1])
+        tmp = np.zeros((0, 3))
+        for sf_cone_array_ in cone_arrays_dict["sf"][idx]:
+            tmp = np.vstack((tmp, sf_cone_array_))
+        cone_arrays_dict["sf"][idx] = tmp
 
-                # Coordinate Frame
-                mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
-                    size=0.6, origin=[0, 0, 0])
+        # Vis
+        pcd_sf = o3d.geometry.PointCloud()
+        pcd_sf.points = o3d.utility.Vector3dVector(cone_arrays_dict["sf"][idx])
+        pcd_sf.paint_uniform_color([1.0, 0.1, 0.1])
 
-                o3d.visualization.draw_geometries([pcd_sf, pcd_gt, mesh_frame])
-            except:
-                pass
+        pcd_gt = o3d.geometry.PointCloud()
+        # Project the gt cones onto the xy plane
+        gt_cone_array_projected = np.hstack(
+            (cone_arrays_dict["gt"][idx][:, 1:3],
+             np.zeros((cone_arrays_dict["gt"][idx].shape[0], 1))))
+        # Artificially make a point to have a z!=0 to counter the open3d visualization bug
+        gt_cone_array_projected[-1, -1] = 1
+        pcd_gt.points = o3d.utility.Vector3dVector(gt_cone_array_projected)
+        pcd_gt.paint_uniform_color([0.1, 0.9, 0.1])
+
+        # Coordinate Frame
+        mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
+            size=0.6, origin=[0, 0, 0])
+
+        o3d.visualization.draw_geometries([pcd_sf, pcd_gt, mesh_frame])
 
     print("Done")
 
@@ -444,7 +447,7 @@ def calculate_metrics(cfg):
         cone_arrays_dict = match_cone_arrays(cfg)
     else:
         try:
-            with open("cone_arrays_dict.cache", "rb") as f:
+            with open("sf_cone_arrays_dict.pkl", "rb") as f:
                 cone_arrays_dict = pickle.load(f)
         except:
             print("No cache file")
@@ -456,11 +459,9 @@ def calculate_metrics(cfg):
     num_bins = cfg.max_distance // cfg.interval_length
 
     pos_error = [[] for _ in range(num_bins)]
-    std_pos_error = [None] * num_bins
-    avg_pos_error = [None] * num_bins
-    num_predictions = [None] * num_bins
-
-    depth_metric = np.zeros((2, ))
+    std_pos_error = [0.0] * num_bins
+    avg_pos_error = [0.0] * num_bins
+    num_predictions = [0] * num_bins
 
     for idx in range(num_cone_arrays):
         gt_cone_array = o3d.geometry.PointCloud()
