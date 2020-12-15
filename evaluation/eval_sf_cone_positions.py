@@ -387,7 +387,7 @@ def match_cone_arrays(cfg):
     pbar.close()
 
     # Cache cone arrays dict
-    with open("cone_arrays_dict.cache", "w") as f:
+    with open("cone_arrays_dict.cache", "wb") as f:
         pickle.dump(cone_arrays_dict, f)
 
     return cone_arrays_dict
@@ -399,7 +399,7 @@ def visualize_cone_arrays(cfg):
         cone_arrays_dict = match_cone_arrays(cfg)
     else:
         try:
-            with open("cone_arrays_dict.cache", "r") as f:
+            with open("cone_arrays_dict.cache", "rb") as f:
                 cone_arrays_dict = pickle.load(f)
         except:
             print("No cache file")
@@ -444,7 +444,7 @@ def calculate_metrics(cfg):
         cone_arrays_dict = match_cone_arrays(cfg)
     else:
         try:
-            with open("cone_arrays_dict.cache", "r") as f:
+            with open("cone_arrays_dict.cache", "rb") as f:
                 cone_arrays_dict = pickle.load(f)
         except:
             print("No cache file")
@@ -452,10 +452,15 @@ def calculate_metrics(cfg):
 
     MAX_DIST_PREDICTED_TO_GT_CONE = 0.5
 
-    cone_arrays_dict = match_cone_arrays(cfg)
     num_cone_arrays = len(cone_arrays_dict["sf"])
+    num_bins = cfg.max_distance // cfg.interval_length
 
-    depth_metric = np.zeros((2, cfg.max_distance // cfg.interval_length))
+    pos_error = [[] for _ in range(num_bins)]
+    std_pos_error = [None] * num_bins
+    avg_pos_error = [None] * num_bins
+    num_predictions = [None] * num_bins
+
+    depth_metric = np.zeros((2, ))
 
     for idx in range(num_cone_arrays):
         gt_cone_array = o3d.geometry.PointCloud()
@@ -484,12 +489,13 @@ def calculate_metrics(cfg):
                                                cfg.interval_length)
                 dist_gt_sf = np.linalg.norm(gt_cone - sf_cone)
 
-                depth_metric[0, dist_gt_origin_array_idx] += 1
-                depth_metric[1, dist_gt_origin_array_idx] += dist_gt_sf
+                pos_error[dist_gt_origin_array_idx].append(dist_gt_sf)
 
-    for idx in range(depth_metric.shape[1]):
-        if depth_metric[0, idx] != 0:
-            depth_metric[1, idx] = depth_metric[1, idx] / depth_metric[0, idx]
+    for idx in range(num_bins):
+        if pos_error[idx]:
+            avg_pos_error[idx] = sum(pos_error[idx]) / len(pos_error[idx])
+            std_pos_error[idx] = float(np.std(np.array(pos_error[idx])))
+            num_predictions[idx] = len(pos_error[idx])
 
     plt.style.use("seaborn")
     dist_ranges = np.linspace(0, cfg.max_distance,
@@ -499,25 +505,32 @@ def calculate_metrics(cfg):
         str(dist_ranges[i]) + "-" + str(dist_ranges[i + 1])
         for i in range(len(dist_ranges) - 1)
     ]
-    y_num_predictions = depth_metric[0, :]
-    y_average_dist_error = depth_metric[1, :]
 
-    fig, (ax1, ax2) = plt.subplots(nrows=2, ncols=1, sharex=True)
+    fig, (ax1, ax2, ax3) = plt.subplots(nrows=3, ncols=1, sharex=True)
+
+    fig.set_figheight(7)
+    fig.set_figwidth(15)
 
     ax1.bar(x_dist_ranges,
-            y_num_predictions,
+            num_predictions,
             color='#444444',
             label='Number of Predictions')
     ax1.set_ylabel("Number of Predictions")
     ax1.set_title("3D Cone Prediction Evaluation")
     ax1.legend()
     ax2.bar(x_dist_ranges,
-            y_average_dist_error,
+            avg_pos_error,
             color='#777777',
             label='Average Distance Error')
-    ax2.set_xlabel("Distance Range")
     ax2.set_ylabel("Average Distance Error")
     ax2.legend()
+    ax3.bar(x_dist_ranges,
+            std_pos_error,
+            color='#aaaaaa',
+            label='Std of Distance Errors')
+    ax3.set_xlabel("Distance Range")
+    ax3.set_ylabel("Std of Distance Error")
+    ax3.legend()
     plt.tight_layout()
     plt.show()
 
