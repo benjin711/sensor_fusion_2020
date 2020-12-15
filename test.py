@@ -257,8 +257,11 @@ def test(
     if generate_depth_stats:
         plt.figure()
         ax = plt.gca()
-        ax.hist(depth_stats['depth_error'])
-        plt.savefig('depth_error_histogram.png', bins=100)
+        ax.hist(depth_stats['depth_error'], bins=50)
+        ax.set_xlabel("Depth Error")
+        ax.set_ylabel("Number of Predictions")
+        ax.set_title("Depth Error Histogram")
+        plt.savefig('depth_error_histogram.png')
         plt.show()
         print(
             f"Median error: {np.median(np.array(depth_stats['depth_error']))}")
@@ -397,8 +400,12 @@ def test(
         height,
         "Image Width":
         width,
-        "Inference Speed in sec":
+        "Model Inference Speed in ms per batch size":
+        t0,
+        "NMS and Filtering Speed in ms per batch size":
         t1,
+        "Total Inference Speed":
+        t0 + t1,
         "Batch Size":
         batch_size
     }
@@ -479,8 +486,6 @@ if __name__ == '__main__':
                    opt.augment,
                    opt.verbose,
                    generate_depth_stats=opt.generate_depth_stats)
-
-        print(ret)
 
     elif opt.task == 'study':  # run over a range of settings and save/plot
         for weights in [

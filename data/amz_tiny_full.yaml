@@ -8,9 +8,9 @@
 #download: https://github.com/ultralytics/yolov5/releases/download/v1.0/coco128.zip
 
 # train and val datasets (image directory or *.txt file with image paths)
-train: /home/benjin/Development/git/sensor_fusion_2020/data/ben_full/ben_train.txt
-val: /home/benjin/Development/git/sensor_fusion_2020/data/ben_full/ben_val.txt
-test: /home/benjin/Development/git/sensor_fusion_2020/data/ben_full/ben_test.txt
+train: /cluster/home/benjin/git/sensor_fusion_2020/data/full/train.txt
+val: /cluster/home/benjin/git/sensor_fusion_2020/data/full/val.txt
+test: /cluster/home/benjin/git/sensor_fusion_2020/data/full/test.txt
 
 # number of classes
 nc: 2
