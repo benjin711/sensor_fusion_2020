@@ -453,7 +453,7 @@ def calculate_metrics(cfg):
             print("No cache file")
             cone_arrays_dict = match_cone_arrays(cfg)
 
-    MAX_DIST_PREDICTED_TO_GT_CONE = 0.5
+    MAX_DIST_PREDICTED_TO_GT_CONE = 2
 
     num_cone_arrays = len(cone_arrays_dict["sf"])
     num_bins = cfg.max_distance // cfg.interval_length
