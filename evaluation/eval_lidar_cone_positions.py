@@ -284,7 +284,7 @@ def calculate_metrics(cfg):
             print("No cache file")
             cone_arrays_dict = match_cone_arrays(cfg)
 
-    MAX_DIST_PREDICTED_TO_GT_CONE = 0.5
+    MAX_DIST_PREDICTED_TO_GT_CONE = 2
 
     num_cone_arrays = len(cone_arrays_dict["lidar"])
     num_bins = cfg.max_distance // cfg.interval_length
@@ -335,28 +335,28 @@ def calculate_metrics(cfg):
 
     fig, (ax1, ax2, ax3) = plt.subplots(nrows=3, ncols=1, sharex=True)
 
-    fig.set_figheight(7)
-    fig.set_figwidth(15)
+    fig.set_figheight(5)
+    fig.set_figwidth(10)
 
     ax1.bar(x_dist_ranges,
             num_predictions,
             color='#444444',
             label='Number of Predictions')
-    ax1.set_ylabel("Number of Predictions")
+    #ax1.set_ylabel("# Predictions")
     ax1.set_title("3D Cone Prediction Evaluation")
     ax1.legend()
     ax2.bar(x_dist_ranges,
             avg_pos_error,
             color='#777777',
             label='Average Distance Error')
-    ax2.set_ylabel("Average Distance Error")
+    #ax2.set_ylabel("Average Distance Error")
     ax2.legend()
     ax3.bar(x_dist_ranges,
             std_pos_error,
             color='#aaaaaa',
-            label='Std of Distance Errors')
+            label='Std of Distance Error')
     ax3.set_xlabel("Distance Range")
-    ax3.set_ylabel("Std of Distance Error")
+    #ax3.set_ylabel("Std of Distance Error")
     ax3.legend()
     plt.tight_layout()
     plt.show()
