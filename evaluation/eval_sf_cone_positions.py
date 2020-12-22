@@ -33,7 +33,7 @@ def command_line_parser():
     parser.add_argument(
         '-pr',
         '--pred_base_folder',
-        default='/home/benjin/Development/notes/tmp_data/inference_fp/output',
+        default='/home/benjin/Development/notes/tmp_data/inference/output',
         type=str,
         help=
         'Specify local path of the folder that contains the sensor fusion predictions'
