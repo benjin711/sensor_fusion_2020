@@ -1,5 +1,5 @@
 import argparse
-
+import random
 import torch.distributed as dist
 import torch.nn.functional as F
 import torch.optim as optim
@@ -78,7 +78,7 @@ def train(hyp, tb_writer, opt, device):
             os.remove(f)
 
     # Create model
-    model = Model(opt.cfg, ch=5, nc=nc).to(device)
+    model = Model(opt.cfg, ch=6, nc=nc).to(device)
 
     # Image sizes
     gs = int(max(model.stride))  # grid size (max stride)
@@ -228,6 +228,7 @@ def train(hyp, tb_writer, opt, device):
         print('Using %g dataloader workers' % dataloader.num_workers)
         print('Starting training for %g epochs...' % epochs)
     # torch.autograd.set_detect_anomaly(True)
+
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
         model.train()
 
@@ -268,8 +269,14 @@ def train(hyp, tb_writer, opt, device):
             imgs[:, 3, :, :] /= 255.0 # Rescale depth channel. Max depth found in inputs was 202 m
 
             # Random RGB drop
-            if opt.rgb_drop:
-                imgs[:, :3, :, :] *= torch.randint(0, 2, size=(1,)).to(device, non_blocking=True)
+            b, _, w, h = imgs.shape
+            rgb_drop = random.choice([True, False]) and opt.rgb_drop
+            if rgb_drop:
+                rgbs = torch.zeros(b, 4, w, h).to(imgs.device)
+            else:
+                rgbs = torch.cat((imgs[:, :3, :, :],
+                                  torch.ones(b, 1, w, h).to(imgs.device)), dim=1)
+            imgs = torch.cat((rgbs, imgs[:, 3:, ::]), dim=1)
 
             # Warmup
             if ni <= nw:
@@ -299,6 +306,9 @@ def train(hyp, tb_writer, opt, device):
 
                     targets = multiscale_targets(targets, unpad_shape, (dw, dh), ns)
             # Forward
+            if imgs.shape[0] < opt.batch_size:
+                pass
+
             pred = model(imgs)
 
             # Loss
@@ -464,6 +474,7 @@ if __name__ == '__main__':
             hyp.update(yaml.load(f, Loader=yaml.FullLoader))  # update hyps
     opt.img_size.extend([opt.img_size[-1]] * (2 - len(opt.img_size)))  # extend to 2 sizes (train, test)
     device = torch_utils.select_device(opt.device, apex=mixed_precision, batch_size=opt.batch_size)
+
     opt.total_batch_size = opt.batch_size
     opt.world_size = 1
     if device.type == 'cpu':

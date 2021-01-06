@@ -1,18 +1,43 @@
 import argparse
 import json
 import pickle
+import sys
 
 from models.experimental import *
 from utils.datasets import *
 
+# Hyperparameters
+hyp = {
+    'optimizer': 'SGD',  # ['adam', 'SGD', None] if none, default is SGD
+    'lr0': 0.01,  # initial learning rate (SGD=1E-2, Adam=1E-3)
+    'momentum': 0.937,  # SGD momentum/Adam beta1
+    'weight_decay': 5e-4,  # optimizer weight decay
+    'depth': 1e-2,  # depth loss gain TODO: tune it, or learn it
+    'giou': 0.05,  # giou loss gain
+    'cls': 5,  # cls loss gain
+    'cls_pw': 1.0,  # cls BCELoss positive_weight
+    'obj': 1.0,  # obj loss gain (*=img_size/320 if img_size != 320)
+    'obj_pw': 1.0,  # obj BCELoss positive_weight
+    'iou_t': 0.20,  # iou training threshold
+    'anchor_t': 4.0,  # anchor-multiple threshold
+    'fl_gamma': 0.0,  # focal loss gamma (efficientDet default is gamma=1.5)
+    'hsv_h': 0.015,  # image HSV-Hue augmentation (fraction)
+    'hsv_s': 0.7,  # image HSV-Saturation augmentation (fraction)
+    'hsv_v': 0.4,  # image HSV-Value augmentation (fraction)
+    'degrees': 0.0,  # image rotation (+/- deg)
+    'translate': 0.0,  # image translation (+/- fraction)
+    'scale': 0.5,  # image scale (+/- gain)
+    'shear': 0.0
+}  # image shear (+/- deg)
+
 
 def test(
         data,
+        conf_thres,
+        iou_thres,
         weights=None,
         batch_size=16,
-        imgsz=640,
-        conf_thres=0.001,
-        iou_thres=0.6,  # for NMS
+        imgsz=640,  # for NMS
         save_json=False,
         single_cls=False,
         augment=False,
@@ -31,8 +56,8 @@ def test(
 
     else:  # called directly
         device = torch_utils.select_device(opt.device, batch_size=batch_size)
-        merge, save_txt = opt.merge, opt.save_txt  # use Merge NMS, save *.txt labels
-        if save_txt:
+        merge, save_txt, save_bin = opt.merge, opt.save_txt, opt.save_bin  # use Merge NMS, save *.txt labels
+        if save_txt or save_bin:
             out = Path('inference/output')
             if os.path.exists(out):
                 shutil.rmtree(out)  # delete output folder
@@ -69,9 +94,28 @@ def test(
     if not training:
         path = data['test'] if opt.task == 'test' else data[
             'val']  # path to val/test images
+
+        # For one time run only
+        # EVAL_SF_EXTEND_TEST_SET = True
+        # if EVAL_SF_EXTEND_TEST_SET:
+        #     with open(path, "r") as f:
+        #         orig_paths = f.readlines()
+
+        #     with open(os.path.join(os.path.dirname(path), "ben_test_extended.txt"), "w") as f:
+        #         cameras = ["forward", "left", "right"]
+        #         for orig_path in orig_paths:
+        #             which_camera = [camera for camera in cameras if orig_path.find(camera) > 0][0]
+
+        #             for camera in cameras:
+        #                 f.write(orig_path.replace(which_camera, camera))
+        #                 if not os.path.exists(orig_path.replace(which_camera, camera)):
+        #                     tmp = np.zeros((0,3))
+        #                     tmp.tofile(orig_path.replace(which_camera, camera).rstrip("\n"))
+
+
         dataloader, dataset = \
         create_dataloader(path, imgsz, batch_size, model.stride.max(), opt,
-                          hyp=None, augment=False, cache=False, pad=0,
+                          hyp=hyp, augment=False, cache=False, pad=0,
                           rect=True)
         tmp_img = dataset[0][0]
         img_shape = np.array(tmp_img.detach().cpu().numpy().shape[1:])
@@ -100,6 +144,14 @@ def test(
     for batch_i, (img, targets, paths,
                   shapes) in enumerate(tqdm(dataloader, desc=s)):
         img = img.to(device, non_blocking=True)
+        #       img = img.half() if half else img.float()  # uint8 to fp16/32
+        img[:, :3, :, :] /= 255.0  # Rescale RGB
+        img[:, 3, :, :] /= 255.0  # Rescale depth
+
+        b, _, w, h = img.shape
+        rgbs = torch.cat(
+            (img[:, :3, :, :], torch.ones(b, 1, w, h).to(img.device)), dim=1)
+        img = torch.cat((rgbs, img[:, 3:, ::]), dim=1)
         img = img.half() if half else img.float()  # uint8 to fp16/32
         img[:, :3, :, :] /= 255.0  # Rescale RGB
         img[:, 3, :, :] /= 255.0  # Rescale depth
@@ -107,6 +159,11 @@ def test(
         nb, _, height, width = img.shape  # batch size, channels, height, width
         whwh = torch.Tensor([width, height, width, height]).to(device)
         total_boxes += targets.shape[0]
+
+        if opt.rgb_drop:
+            img[:, :3, :, :] *= torch.randint(0, 2,
+                                              size=(1, )).to(device,
+                                                             non_blocking=True)
 
         # Disable gradients
         with torch.no_grad():
@@ -132,6 +189,7 @@ def test(
             t1 += torch_utils.time_synchronized() - t
 
         # Statistics per image
+
         for si, pred in enumerate(output):
             labels = targets[targets[:, 0] == si, 1:]
             nl = len(labels)
@@ -148,16 +206,45 @@ def test(
             if save_txt:
                 gn = torch.tensor(shapes[si][0])[[1, 0, 1, 0
                                                   ]]  # normalization gain whwh
-                txt_path = str(out / Path(paths[si]).stem)
+                base = os.path.dirname(paths[si])
+                base = str(out / Path(base[1:]))
+                stem = str(Path(paths[si]).stem) + ".txt"
+                os.makedirs(base, exist_ok=True)
+
                 pred[:, :4] = scale_coords(img[si].shape[1:], pred[:, :4],
                                            shapes[si][0],
                                            shapes[si][1])  # to original
-                for *xyxy, conf, cls in pred:
+                for *xyxy, conf, cls, dpth in pred:
                     xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) /
                             gn).view(-1).tolist()  # normalized xywh
-                    with open(txt_path + '.txt', 'a') as f:
-                        f.write(
-                            ('%g ' * 5 + '\n') % (cls, *xywh))  # label format
+                    with open(os.path.join(base, stem), 'a') as f:
+                        f.write(('%g ' * 6 + '\n') %
+                                (cls, *xywh, dpth))  # label format
+
+            if save_bin:
+                gn = torch.tensor(shapes[si][0])[[1, 0, 1, 0
+                                                  ]]  # normalization gain whwh
+                base = os.path.dirname(paths[si])
+                base = str(out / Path(base[1:]))
+                stem = str(Path(paths[si]).stem) + ".txt"
+                os.makedirs(base, exist_ok=True)
+
+                pred_tmp = scale_coords(img[si].shape[1:], pred[:, :4],
+                                        shapes[si][0],
+                                        shapes[si][1])  # to original
+
+                pred_bin = np.zeros((0, 6))
+                for *xyxy, (conf, cls, dpth) in zip(pred_tmp, pred[:, 4:]):
+                    curr_cone = np.zeros(6)
+                    xywh = (xyxy2xywh(xyxy[0].view(1, 4)) /
+                            gn).view(-1).tolist()  # normalized xywh
+                    curr_cone[0] = cls
+                    curr_cone[1:5] = xywh
+                    curr_cone[5] = dpth
+                    pred_bin = np.vstack((pred_bin, curr_cone.reshape(1, 6)))
+
+                pred_bin.tofile(
+                    os.path.join(base, stem.replace('.txt', '.bin')))
 
             # Clip boxes to image bounds
             clip_coords(pred, (height, width))
@@ -179,7 +266,9 @@ def test(
                         coco91class[int(p[5])],
                         'bbox': [round(x, 3) for x in b],
                         'score':
-                        round(p[4], 5)
+                        round(p[4], 5),
+                        'depth':
+                        p[6]
                     })
 
             # Assign all predictions as incorrect
@@ -466,6 +555,9 @@ if __name__ == '__main__':
     parser.add_argument('--save-txt',
                         action='store_true',
                         help='save results to *.txt')
+    parser.add_argument('--rgb_drop',
+                        action='store_true',
+                        help='Inference on lidar only for 50% of the time')
     parser.add_argument('--generate-depth-stats',
                         action='store_true',
                         help='Generate histogram with depth error')

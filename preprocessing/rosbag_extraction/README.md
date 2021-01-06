@@ -1,13 +1,13 @@
 ## Rosbag Extraction Tools
 
-This folder contains scripts to extract data from rosbags. I suggest to seperate extraction and processing to seperate folders since then, we can use another virtual environment with python3 for processing. As python2 is used, it is recommended to use the virtualenv tool to create the virtual environment here. The --system-site-packages flag must be provided when installing the virtual environment because we rely on system site packages like the "rosbag" package, which is seemingly only available with a ROS installation and can't be installed using e.g. pip. To install the virtual environment with system site packages available, do: 
+This folder contains scripts to extract data from rosbags. As python2 is required, it is recommended to use the virtualenv tool to create the virtual environment here. The --system-site-packages flag must be provided when installing the virtual environment because we rely on system site packages like the "rosbag" package, which is seemingly only available with a ROS installation and can't be installed using e.g. pip. To install the virtual environment with system site packages available, do: 
 
 ```
 python2 -m virtualenv --system-site-packages venv
 ```
 
 ### Requirements
-The rosbags, gtmd.csv and static transformation files are expected to be in a folder structure similar to the following for extraction. The extracted data will be in a folder called "data" in the folders of the respective testing days alongside the "gtmd", "rosbags" and "static_transformations" folders. 
+The rosbags, gtmd.csv and static transformation files are expected to be in a folder structure like following for extraction. The extracted data will be in a folder called "data" in the folders of the respective testing days alongside the "gtmd", "rosbags" and "static_transformations" folders. 
 ```
 sensor_fusion_data/
 ├── 2020-07-05_tuggen
@@ -29,6 +29,7 @@ sensor_fusion_data/
 │       └── static_transformations.yaml
 
 ```
+
 There is no requirements.txt file because with the --system-site-packages flag, all potentially unnecessary system site packages get displayed as well. Here is a list of packages that work for me:
 
 opencv-python 4.2.0.32
@@ -50,6 +51,5 @@ source venv/bin/activate
 python --extract_all -b <base_folder>
 ```
 
-### Issues & Next Steps
-- /
+Check the config.py file to see a list of topics that are currently supported to be extracted.
 
