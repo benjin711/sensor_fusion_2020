@@ -1,5 +1,5 @@
 # This file contains modules common to various models
-
+import torch
 
 from utils.utils import *
 
@@ -189,3 +189,74 @@ class Classify(nn.Module):
     def forward(self, x):
         z = torch.cat([self.aap(y) for y in (x if isinstance(x, list) else [x])], 1)  # cat if list
         return self.flat(self.conv(z))  # flatten to x(b,c2)
+
+
+class ConvPooling(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, padding,
+                 eps=0.001):
+        super(ConvPooling, self).__init__()
+        self.conv = nn.Conv2d(in_channels=in_channels,
+                              out_channels=out_channels,
+                              kernel_size=kernel_size,
+                              padding=padding,
+                              stride=1)
+        self.pool = nn.MaxPool2d(kernel_size=kernel_size,
+                                 padding=padding,
+                                 stride=1)
+        self.epison = eps
+        self.mask_ones = torch.ones((1, 1, kernel_size, kernel_size))
+        self.pad = padding
+
+    def forward(self, x, m):
+        x = torch.mul(x, m)
+        x = self.conv(x)
+        if isinstance(x, torch.cuda.HalfTensor):
+            d = torch.nn.functional.conv2d(m,
+                                           weight=self.mask_ones.to(x.device).half(),
+                                           padding=self.pad,
+                                           stride=1) + self.epison
+        else:
+            d = torch.nn.functional.conv2d(m,
+                                           weight=self.mask_ones.to(x.device),
+                                           padding=self.pad,
+                                           stride=1) + self.epison
+        y = torch.div(x, d)
+        m = self.pool(m)
+        return y, m
+
+class SparseConv(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(SparseConv, self).__init__()
+        self.conv11 = ConvPooling(in_channels=in_channels,
+                                  out_channels=16,
+                                  kernel_size=11,
+                                  padding=5)
+        self.conv7 = ConvPooling(in_channels=16,
+                                 out_channels=16,
+                                 kernel_size=7,
+                                 padding=3)
+        self.conv5 = ConvPooling(in_channels=16,
+                                 out_channels=16,
+                                 kernel_size=5,
+                                 padding=2)
+        self.conv3_1 = ConvPooling(in_channels=16,
+                                   out_channels=16,
+                                   kernel_size=3,
+                                   padding=1)
+        self.conv3_2 = ConvPooling(in_channels=16,
+                                   out_channels=16,
+                                   kernel_size=3,
+                                   padding=1)
+        self.conv1 = ConvPooling(in_channels=16,
+                                 out_channels=out_channels,
+                                 kernel_size=1,
+                                 padding=0)
+
+    def forward(self, x, m):
+        x, m = self.conv11(x, m)
+        x, m = self.conv7(x, m)
+        x, m = self.conv5(x, m)
+        x, m = self.conv3_1(x, m)
+        x, m = self.conv3_2(x, m)
+        output, _ = self.conv1(x, m)
+        return output

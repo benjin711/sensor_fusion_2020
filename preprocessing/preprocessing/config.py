@@ -41,29 +41,45 @@ def command_line_parser():
         '-k',
         '--keep_orig_data_folders',
         dest='keep_orig_data_folders',
-        action='store_true',
-        help='Keep the original data folders (not grouped by timestamp)')
+        type=str2bool,
+        default=True,
+        help=
+        'Keep the original data folders (which are not grouped by timestamp)')
 
     parser.add_argument(
         '--match_data',
         dest='match_data',
         action='store_true',
         help=
-        'Run algorithm to match images and point clouds according to their timestamps to quintests'
+        'Run algorithm to match images, point clouds, cone positions and car positions according to their timestamps'
     )
-
-    parser.add_argument(
-        '-p',
-        '--perfect_data',
-        dest='perfect_data',
-        action='store_true',
-        help='Discard timestamps when at least one camera failed ')
 
     parser.add_argument('-m',
                         '--motion_compensation',
                         type=str2bool,
                         default=True,
-                        help='Specify rosbag data folder path')
+                        help='Motion compensate point clouds')
+
+    parser.add_argument('--generate_dim',
+                        dest='generate_dim',
+                        action='store_true',
+                        help='Generate DIM layers')
+
+    parser.add_argument(
+        '-i',
+        '--icp_rots',
+        type=str2bool,
+        default=False,
+        help='Calculate relative rotations between consecutive point clouds')
+
+    parser.add_argument(
+        '-l',
+        '--match_lidar_cone_arrays',
+        type=str2bool,
+        default=False,
+        help=
+        'Transform the lidar pipeline cones to the reference coordinate systems of our data.'
+    )
 
     cfg = parser.parse_args()
 

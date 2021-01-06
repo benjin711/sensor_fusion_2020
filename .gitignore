@@ -43,3 +43,6 @@ lsf**
 
 # Cache
 **.cache
+
+# Inference Folder
+inference

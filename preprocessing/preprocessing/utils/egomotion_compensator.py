@@ -30,7 +30,7 @@ class EgomotionCompensator:
     def egomotion_compensation(self, point_cloud_file, src_frame,
                                reference_timestamp, motion_compensation):
         """
-        Transforms points from fw_lidar or mrh_lidar frame to the egomotion frame
+        Transforms points from fw_lidar or mrh_lidar frame to the mrh frame
         at the time of the reference_timestamp
         """
         point_cloud = read_point_cloud(point_cloud_file)
@@ -99,3 +99,39 @@ class EgomotionCompensator:
 
         # Write the point cloud back to file
         write_point_cloud(point_cloud_file, point_cloud)
+
+    def get_transformations(self, timestamp_tuples, src_frame, dst_frame):
+        # Input is a numpy array where each element is a tuple of timestamps
+        # Output is a numpy array of the corresponding transformations T
+        T_mrh_ego = self.T["mrh_lidar_to_egomotion"]
+
+        T_ego_wor = np.zeros((timestamp_tuples.shape[0], 4, 4))
+        start_rots = self.R_slerp_ego_wor(timestamp_tuples[:, 0]).as_matrix()
+        start_trans = self.t_interpolator_ego_wor(timestamp_tuples[:, 0])
+        T_ego_wor[:, :3, :3] = start_rots
+        T_ego_wor[:, :3, 3] = start_trans
+        T_ego_wor[:, 3, 3] = 1
+
+        T_wor_ego = np.zeros((timestamp_tuples.shape[0], 4, 4))
+        end_rots = self.R_slerp_ego_wor(timestamp_tuples[:, 1]).as_matrix()
+        end_trans = self.t_interpolator_ego_wor(timestamp_tuples[:, 1])
+        T_wor_ego[:, :3, :3] = end_rots
+        T_wor_ego[:, :3, 3] = end_trans
+        T_wor_ego[:, 3, 3] = 1
+        T_wor_ego = np.linalg.inv(T_wor_ego)
+
+        T_ego_mrh = np.linalg.inv(T_mrh_ego)
+
+        if src_frame == "mrh_lidar" and dst_frame == "mrh_lidar":
+            Ts = T_ego_mrh @ T_wor_ego @ T_ego_wor @ T_mrh_ego
+        elif src_frame == "egomotion" and dst_frame == "mrh_lidar":
+            Ts = T_ego_mrh @ T_wor_ego @ T_ego_wor
+        elif src_frame == "egomotion" and dst_frame == "egomotion":
+            Ts = T_wor_ego @ T_ego_wor
+        else:
+            print(
+                "Combination of source target frame has not been implemented yet."
+            )
+            sys.exit()
+
+        return Ts

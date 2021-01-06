@@ -16,7 +16,7 @@ pipenv install
 ```
 
 Requirement is that the images, point clouds, tf transforms and car GNSS have already been extracted using the rosbag extraction scripts. A file structure like the following is expected:
-
+```
 .
 ├── 2020-07-05_tuggen
 │   ├── data
@@ -30,19 +30,30 @@ Requirement is that the images, point clouds, tf transforms and car GNSS have al
 │   │   ├── autocross_2020-07-05-12-35-31.bag
 │   │   └── autocross_2020-07-05-13-57-26.bag
 │   └── static_transformations
-│       └── static_transformations.yaml
+│       ├── forward.yaml
+│       ├── left.yaml
+│       ├── right.yaml
+│       ├── static_transformations.yaml
+│       ├── extrinsics_lidar_forward.yaml
+│       ├── extrinsics_lidar_left.yaml
+│       └── extrinsics_lidar_right.yaml
 ├── 2020-07-08_duebendorf
 │   ├── data
 │   │   └── autocross_2020-07-08-09-53-46
 │   ├── gtmd
-│   │   ├── 2020-07-08_duebendorf_edited.csv
-│   │   └── 2020-07-08_duebendorf_faulty.csv
+│   │   └── 2020-07-08_duebendorf.csv
 │   ├── rosbags
 │   │   └── autocross_2020-07-08-09-53-46.bag
 │   └── static_transformations
-│       └── static_transformations.yaml
+│       ├── forward.yaml
+│       ├── left.yaml
+│       ├── right.yaml
+│       ├── static_transformations.yaml
+│       ├── extrinsics_lidar_forward.yaml
+│       ├── extrinsics_lidar_left.yaml
+│       └── extrinsics_lidar_right.yaml
 ...
-
+```
 
 
 To preprocess a single data folder from one rosbag, do:
@@ -50,13 +61,20 @@ To preprocess a single data folder from one rosbag, do:
 pipenv shell 
 python main.py -h
 python main.py -d <path to folder where the extracted data is stored in e.g. autocross_2020-07-05-12-35-31> --match_data
-python main.py -d <path to folder where the extracted data is stored in e.g. autocross_2020-07-05-12-35-31> --match_data --keep_orig_data_folders   
+python main.py -d <path to folder where the extracted data is stored in e.g. autocross_2020-07-05-12-35-31> --match_data --keep_orig_data_folders True 
 ```
-The --keep_orig_data_folders flag helps debugging, since intermediate folders/files are not deleted.
+The --keep_orig_data_folders True flag helps debugging, since intermediate folders/files are not deleted.
 
 To preprocess all data folders within the base folder, do:
 ```
 pipenv shell 
 python main.py --preprocess_all -b <path to the base folder with the test day folders inside> --match_data
-python main.py --preprocess_all -b <path to the base folder with the test day folders inside> --match_data --keep_orig_data_folders  
+python main.py --preprocess_all -b <path to the base folder with the test day folders inside> --match_data --keep_orig_data_folders True
+```
+To generate the depth + mask layers, depending if preprecessing has already been done or not, do:
+```
+pipenv shell 
+python main.py --preprocess_all -b <path to the base folder with the test day folders inside> --generate_dm
+python main.py --preprocess_all -b <path to the base folder with the test day folders inside> --match_data --generate_dm
+python main.py --preprocess_all -b <path to the base folder with the test day folders inside> --match_data --keep_orig_data_folders True --generate_dm
 ```

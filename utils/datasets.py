@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 import torch.nn.functional as F
 import torch
+import albumentations as A
 from PIL import Image, ExifTags
 from torch.utils.data import Dataset
 from tqdm import tqdm
@@ -78,7 +79,7 @@ def create_dataloader(path,
     batch_size = min(batch_size, len(dataset))
     nw = min(
         [os.cpu_count() // world_size, batch_size if batch_size > 1 else 0,
-         8])  # number of workers
+         4])  # number of workers
     train_sampler = torch.utils.data.distributed.DistributedSampler(
         dataset) if local_rank != -1 else None
     dataloader = torch.utils.data.DataLoader(
@@ -101,35 +102,51 @@ class LoadJointImages:
 
         with open(path, 'r') as label_f:
             labels = label_f.read().split('\n')
-            labels.pop() # \n on the last line results in empty list element
+            labels.pop()  # \n on the last line results in empty list element
 
-        self.forward_images = [label_path.replace('labels', 'camera_filtered').replace('.txt', '.png')
-                               for label_path in labels]
-        self.left_images = [forward_path.replace('forward', 'left')
-                            for forward_path in self.forward_images]
-        self.right_images = [forward_path.replace('forward', 'right')
-                             for forward_path in self.forward_images]
+        self.forward_images = [
+            label_path.replace('labels',
+                               'camera_filtered').replace('.txt', '.png')
+            for label_path in labels
+        ]
+        self.left_images = [
+            forward_path.replace('forward', 'left')
+            for forward_path in self.forward_images
+        ]
+        self.right_images = [
+            forward_path.replace('forward', 'right')
+            for forward_path in self.forward_images
+        ]
 
-
-        self.forward_dis = [image_path.replace('camera_filtered', 'di').replace('.png', '.bin')
-                            for image_path in self.forward_images]
+        self.forward_dis = [
+            image_path.replace('camera_filtered',
+                               'di').replace('.png', '.bin')
+            for image_path in self.forward_images
+        ]
         self.forward_masks = [
             image_path.replace('camera_filtered', 'm').replace('.png', '.bin')
-            for image_path in self.forward_images]
+            for image_path in self.forward_images
+        ]
 
         self.left_dis = [
-            image_path.replace('camera_filtered', 'di').replace('.png', '.bin')
-            for image_path in self.left_images]
+            image_path.replace('camera_filtered',
+                               'di').replace('.png', '.bin')
+            for image_path in self.left_images
+        ]
         self.left_masks = [
             image_path.replace('camera_filtered', 'm').replace('.png', '.bin')
-            for image_path in self.left_images]
+            for image_path in self.left_images
+        ]
 
         self.right_dis = [
-            image_path.replace('camera_filtered', 'di').replace('.png', '.bin')
-            for image_path in self.right_images]
+            image_path.replace('camera_filtered',
+                               'di').replace('.png', '.bin')
+            for image_path in self.right_images
+        ]
         self.right_masks = [
             image_path.replace('camera_filtered', 'm').replace('.png', '.bin')
-            for image_path in self.right_images]
+            for image_path in self.right_images
+        ]
 
         ni = len(self.forward_images)
         # ni, nv = len(images), len(videos)
@@ -138,14 +155,14 @@ class LoadJointImages:
         self.rect = rect
         raw_shape = np.array(cv2.imread(self.forward_images[0]).shape[:2])
         if self.rect:
-            normalized_shape = raw_shape/raw_shape[1]
-            self.img_shape = np.ceil(normalized_shape * img_size / stride).astype(
-                                np.int) * stride
+            normalized_shape = raw_shape / raw_shape[1]
+            self.img_shape = np.ceil(
+                normalized_shape * img_size / stride).astype(np.int) * stride
         else:
             self.img_shape = np.array([img_size, img_size])
 
         self.img_size = img_size
-        self.nf = ni # number of files
+        self.nf = ni  # number of files
         self.video_flag = False
         self.mode = 'images'
 
@@ -175,36 +192,34 @@ class LoadJointImages:
         # Read image
         self.count += 1
         img_f = cv2.imread(forward_im_path)  # BGR
-        di_f = np.fromfile(forward_di_path, dtype=np.float16).reshape(img_f.shape[0],
-                                                             img_f.shape[1],
-                                                             2)
+        di_f = np.fromfile(forward_di_path,
+                           dtype=np.float16).reshape(img_f.shape[0],
+                                                     img_f.shape[1], 2)
         d_f = di_f[:, :, 0].reshape(img_f.shape[0], img_f.shape[1], 1)
         i_f = di_f[:, :, 1].reshape(img_f.shape[0], img_f.shape[1], 1)
-        m_f = np.fromfile(forward_m_path, dtype=np.bool).reshape(img_f.shape[0],
-                                                           img_f.shape[1],
-                                                           1)
+        m_f = np.fromfile(forward_m_path,
+                          dtype=np.bool).reshape(img_f.shape[0],
+                                                 img_f.shape[1], 1)
 
         img_l = cv2.imread(left_im_path)  # BGR
-        di_l = np.fromfile(left_di_path, dtype=np.float16).reshape(
-            img_l.shape[0],
-            img_l.shape[1],
-            2)
+        di_l = np.fromfile(left_di_path,
+                           dtype=np.float16).reshape(img_l.shape[0],
+                                                     img_l.shape[1], 2)
         d_l = di_l[:, :, 0].reshape(img_l.shape[0], img_l.shape[1], 1)
         i_l = di_l[:, :, 1].reshape(img_l.shape[0], img_l.shape[1], 1)
-        m_l = np.fromfile(left_m_path, dtype=np.bool).reshape(img_l.shape[0],
-                                                                 img_l.shape[1],
-                                                                 1)
+        m_l = np.fromfile(left_m_path,
+                          dtype=np.bool).reshape(img_l.shape[0],
+                                                 img_l.shape[1], 1)
 
         img_r = cv2.imread(right_im_path)  # BGR
-        di_r = np.fromfile(right_di_path, dtype=np.float16).reshape(
-            img_r.shape[0],
-            img_r.shape[1],
-            2)
+        di_r = np.fromfile(right_di_path,
+                           dtype=np.float16).reshape(img_r.shape[0],
+                                                     img_r.shape[1], 2)
         d_r = di_r[:, :, 0].reshape(img_r.shape[0], img_r.shape[1], 1)
         i_r = di_r[:, :, 1].reshape(img_r.shape[0], img_r.shape[1], 1)
-        m_r = np.fromfile(right_m_path, dtype=np.bool).reshape(img_r.shape[0],
-                                                                 img_r.shape[1],
-                                                                 1)
+        m_r = np.fromfile(right_m_path,
+                          dtype=np.bool).reshape(img_r.shape[0],
+                                                 img_r.shape[1], 1)
         assert img_f is not None, 'Forward image Not Found ' + forward_im_path
         assert img_l is not None, 'Left image Not Found ' + left_im_path
         assert img_r is not None, 'Right image Not Found ' + right_im_path
@@ -231,10 +246,12 @@ class LoadJointImages:
         img_r = np.ascontiguousarray(img_r)
 
         # cv2.imwrite(path + '.letterbox.jpg', 255 * img.transpose((1, 2, 0))[:, :, ::-1])  # save letterbox image
-        return (forward_im_path, left_im_path, right_im_path), (img_f, img_l, img_r), (img_f0, img_l0, img_r0)
+        return (forward_im_path, left_im_path,
+                right_im_path), (img_f, img_l, img_r), (img_f0, img_l0, img_r0)
 
     def __len__(self):
         return self.nf  # number of files
+
 
 class LoadImages:  # for inference
     def __init__(self, path, img_size=640, rect=False, stride=32):
@@ -269,15 +286,15 @@ class LoadImages:  # for inference
         self.rect = rect
         raw_shape = np.array(cv2.imread(self.images[0]).shape[:2])
         if self.rect:
-            normalized_shape = raw_shape/raw_shape[1]
-            self.img_shape = np.ceil(normalized_shape * img_size / stride).astype(
-                                np.int) * stride
+            normalized_shape = raw_shape / raw_shape[1]
+            self.img_shape = np.ceil(
+                normalized_shape * img_size / stride).astype(np.int) * stride
         else:
             self.img_shape = np.array([img_size, img_size])
 
         self.img_size = img_size
         self.files = self.images
-        self.nf = ni # number of files
+        self.nf = ni  # number of files
         self.video_flag = False
         self.mode = 'images'
 
@@ -317,14 +334,14 @@ class LoadImages:  # for inference
         # Read image
         self.count += 1
         img0 = cv2.imread(im_path)  # BGR
-        di0 = np.fromfile(di_path, dtype=np.float16).reshape(img0.shape[0],
-                                                             img0.shape[1],
-                                                             2)
+        di0 = np.fromfile(di_path,
+                          dtype=np.float16).reshape(img0.shape[0],
+                                                    img0.shape[1], 2)
         d0 = di0[:, :, 0].reshape(img0.shape[0], img0.shape[1], 1)
         i0 = di0[:, :, 1].reshape(img0.shape[0], img0.shape[1], 1)
-        m0 = np.fromfile(m_path, dtype=np.bool).reshape(img0.shape[0],
-                                                           img0.shape[1],
-                                                           1)
+        m0 = np.fromfile(m_path,
+                         dtype=np.bool).reshape(img0.shape[0], img0.shape[1],
+                                                1)
 
         assert img0 is not None, 'Image Not Found ' + im_path
         print('image %g/%g %s: ' % (self.count, self.nf, im_path), end='')
@@ -516,11 +533,12 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             """Fetch the label paths from the top-level directory given"""
             with open(path, 'r') as label_f:
                 self.label_files = label_f.read().split('\n')
-                self.label_files.pop() # Remove empty line
+                self.label_files.pop()  # Remove empty line
 
             self.img_files = [
                 x.replace('labels', 'camera_filtered').replace('.txt', '.png')
-                for x in self.label_files]
+                for x in self.label_files
+            ]
             self.di_files = [
                 x.replace('labels', 'di').replace('.txt', '.bin')
                 for x in self.label_files
@@ -567,6 +585,16 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         self.mosaic = self.augment and not self.rect  # load 4 images at a time into a mosaic (only during training)
         self.mosaic_border = [-img_size // 2, -img_size // 2]
         self.stride = stride
+        self.train_transform = A.Compose([
+            A.MotionBlur(p=0.25),
+            A.RandomRain(p=0.25),
+            A.RandomSunFlare(p=0.25),
+            A.RandomBrightnessContrast(p=0.25),
+            A.HueSaturationValue(hue_shift_limit=hyp['hsv_h'],
+                                 sat_shift_limit=hyp['hsv_s'],
+                                 val_shift_limit=hyp['hsv_v'],
+                                 p=0.25),
+        ])
 
         # Define labels
         # self.label_files = [
@@ -658,19 +686,13 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                     img = cv2.imread(str(p))
                     p_di = Path(self.di_files[i])
                     p_m = Path(self.m_files[i])
-                    di = np.fromfile(p_di,
-                        dtype=np.float16).reshape(img.shape[0],
-                                                  img.shape[1],
-                                                  2)
-                    m = np.fromfile(p_m,
-                                    dtype=np.bool).reshape(img.shape[0],
-                                                           img.shape[1],
-                                                           1)
-                    img = np.concatenate(
-                        (
-                        img, di[:, :, 0].reshape(img.shape[0], img.shape[1], 1),
-                        m),
-                        axis=-1)
+                    di = np.fromfile(p_di, dtype=np.float16).reshape(
+                        img.shape[0], img.shape[1], 2)
+                    m = np.fromfile(p_m, dtype=np.bool).reshape(
+                        img.shape[0], img.shape[1], 1)
+                    img = np.concatenate((img, di[:, :, 0].reshape(
+                        img.shape[0], img.shape[1], 1), m),
+                                         axis=-1)
                     h, w = img.shape[:2]
                     for j, x in enumerate(l):
                         f = '%s%sclassifier%s%g_%g_%s' % (
@@ -790,10 +812,14 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             if x.size > 0:
                 # Normalized xywh to pixel xyxy format
                 labels = x.copy()
-                labels[:, 2] = ratio[0] * w * (x[:, 2] - x[:, 4]/2) + pad[0]  # pad width
-                labels[:, 3] = ratio[1] * h * (x[:, 3] - x[:, 5]/2) + pad[1]  # pad height
-                labels[:, 4] = ratio[0] * w * (x[:, 2] + x[:, 4]/2) + pad[0]
-                labels[:, 5] = ratio[1] * h * (x[:, 3] + x[:, 5]/2) + pad[1]
+                labels[:,
+                       2] = ratio[0] * w * (x[:, 2] -
+                                            x[:, 4] / 2) + pad[0]  # pad width
+                labels[:,
+                       3] = ratio[1] * h * (x[:, 3] -
+                                            x[:, 5] / 2) + pad[1]  # pad height
+                labels[:, 4] = ratio[0] * w * (x[:, 2] + x[:, 4] / 2) + pad[0]
+                labels[:, 5] = ratio[1] * h * (x[:, 3] + x[:, 5] / 2) + pad[1]
 
         if self.augment:
             # Augment imagespace
@@ -806,11 +832,11 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                                             shear=hyp['shear'])
 
             # Augment colorspace
-            augment_hsv(img[:, :, :3].astype(np.uint8),
-                        hgain=hyp['hsv_h'],
-                        sgain=hyp['hsv_s'],
-                        vgain=hyp['hsv_v'])
-
+            # augment_hsv(img[:, :, :3].astype(np.uint8),
+            #             hgain=hyp['hsv_h'],
+            #             sgain=hyp['hsv_s'],
+            #             vgain=hyp['hsv_v'])
+            img[:, :, :3] = self.train_transform(image=img[:, :, :3])["image"]
             # Apply cutouts
             # if random.random() < 0.9:
             #     labels = cutout(img, labels)
@@ -845,9 +871,10 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
         # Convert
         channels = np.split(img, 5, axis=2)
-        img = np.concatenate([channels[2], channels[1], channels[0],
-                              channels[3], channels[4]], axis=2) # BGR to RGB
-        img = img.transpose(2, 0, 1)   # Put channels first
+        img = np.concatenate(
+            [channels[2], channels[1], channels[0], channels[3], channels[4]],
+            axis=2)  # BGR to RGB
+        img = img.transpose(2, 0, 1)  # Put channels first
         img = np.ascontiguousarray(img)
 
         return torch.from_numpy(img), labels_out, self.img_files[index], shapes
@@ -870,20 +897,27 @@ def resize_dm(dm, scale):
 
     return output
 
+
 def resize_dm_torch(dm, scale):
     """Assume an input tensor of shape (N, 2, H, W)"""
     dm_numpy = dm.detach().cpu().numpy()
     N, C, h0, w0 = dm.shape
-    output = torch.empty((N, C, round(h0 * scale), round(w0 * scale)), dtype=dm.dtype, layout=dm.layout, device=dm.device)
+    output = torch.empty((N, C, round(h0 * scale), round(w0 * scale)),
+                         dtype=dm.dtype,
+                         layout=dm.layout,
+                         device=dm.device)
     output[:, :, :, :] = 0
     for i in range(N):
         dm_i = dm_numpy[i, :, :, :]
         indices = np.where(dm_i > 0)
         new_indices = (np.array(indices[1] * scale).astype(np.int),
                        np.array(indices[2] * scale).astype(np.int))
-        output[i, :, new_indices[0], new_indices[1]] = torch.transpose(torch.from_numpy(dm_numpy[i, :, indices[1], indices[2]]), 0, 1).to(dm.device)
+        output[i, :, new_indices[0], new_indices[1]] = torch.transpose(
+            torch.from_numpy(dm_numpy[i, :, indices[1], indices[2]]), 0,
+            1).to(dm.device)
 
     return output
+
 
 def load_image(self, index):
     # loads 1 image from dataset, returns img, original hw, resized hw
@@ -894,13 +928,10 @@ def load_image(self, index):
         p_di = self.di_files[index]
         p_m = Path(self.m_files[index])
         di = np.fromfile(p_di,
-                         dtype=np.float16).reshape(img.shape[0],
-                                                   img.shape[1],
+                         dtype=np.float16).reshape(img.shape[0], img.shape[1],
                                                    2)
-        m = np.fromfile(p_m,
-                        dtype=np.bool).reshape(img.shape[0],
-                                               img.shape[1],
-                                               1)
+        m = np.fromfile(p_m, dtype=np.bool).reshape(img.shape[0], img.shape[1],
+                                                    1)
         img = np.concatenate(
             (img, di[:, :, 0].reshape(img.shape[0], img.shape[1], 1), m),
             axis=-1)
@@ -1035,14 +1066,18 @@ def replicate(img, labels):
 
 
 def letterbox_torch(imgs,
-              new_shape=(640, 640),
-              color=(114, 114, 114),
-              auto=True,
-              scaleFill=False,
-              scaleup=True):
+                    new_shape=(640, 640),
+                    color=(114, 114, 114),
+                    auto=True,
+                    scaleFill=False,
+                    scaleup=True):
 
-    N, c, h_new, w_new = imgs.shape[0], imgs.shape[1], new_shape[0], new_shape[1]
-    new_imgs = torch.empty((N, c, h_new, w_new), dtype=imgs.dtype, layout=imgs.layout, device=imgs.device)
+    N, c, h_new, w_new = imgs.shape[0], imgs.shape[1], new_shape[0], new_shape[
+        1]
+    new_imgs = torch.empty((N, c, h_new, w_new),
+                           dtype=imgs.dtype,
+                           layout=imgs.layout,
+                           device=imgs.device)
     imgs = imgs.detach().cpu().numpy()
     # Resize image to a 32-pixel-multiple rectangle https://github.com/ultralytics/yolov3/issues/232
     shape = imgs.shape[2:]  # current shape [height, width]
@@ -1072,16 +1107,25 @@ def letterbox_torch(imgs,
 
     if shape[::-1] != new_unpad:  # resize
         dm_part = resize_dm_torch(imgs[:, 3:, :, :], r)
-        img_part = F.interpolate(imgs[:, :3, :, :], size=(new_unpad), mode='bilinear', align_corners=False)
+        img_part = F.interpolate(imgs[:, :3, :, :],
+                                 size=(new_unpad),
+                                 mode='bilinear',
+                                 align_corners=False)
         imgs = np.concatenate((img_part, dm_part), axis=1)
 
     top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
     left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
 
-
-    rgb_pad_value = 144.0/255.0
-    new_imgs[:, :3, :, :] = torch.from_numpy(np.pad(imgs[:, :3, :, :], ((0, 0), (0, 0), (top, bottom), (left, right)), constant_values=((0, 0), (0, 0), (rgb_pad_value, rgb_pad_value), (rgb_pad_value, rgb_pad_value))))
-    new_imgs[:, 3:, :, :] = torch.from_numpy(np.pad(imgs[:, 3:, :, :], ((0, 0), (0, 0), (top, bottom), (left, right)), constant_values=((0, 0), (0, 0), (0, 0), (0, 0))))
+    rgb_pad_value = 144.0 / 255.0
+    new_imgs[:, :3, :, :] = torch.from_numpy(
+        np.pad(imgs[:, :3, :, :],
+               ((0, 0), (0, 0), (top, bottom), (left, right)),
+               constant_values=((0, 0), (0, 0), (rgb_pad_value, rgb_pad_value),
+                                (rgb_pad_value, rgb_pad_value))))
+    new_imgs[:, 3:, :, :] = torch.from_numpy(
+        np.pad(imgs[:, 3:, :, :],
+               ((0, 0), (0, 0), (top, bottom), (left, right)),
+               constant_values=((0, 0), (0, 0), (0, 0), (0, 0))))
     return new_imgs, ratio, (dw, dh)
 
 
@@ -1120,7 +1164,8 @@ def letterbox(img,
 
     if shape[::-1] != new_unpad:  # resize
         dm = resize_dm(img[:, :, 3:], r)
-        img = cv2.resize(img[:, :, :3].astype(np.uint8), new_unpad,
+        img = cv2.resize(img[:, :, :3].astype(np.uint8),
+                         new_unpad,
                          interpolation=cv2.INTER_LINEAR)
         img = np.concatenate((img, dm), axis=-1)
 
@@ -1132,8 +1177,13 @@ def letterbox(img,
 
     h_new, w_new, c = new_shape[0], new_shape[1], img.shape[2]
     new_img = np.zeros((h_new, w_new, c))
-    new_img[:, :, :3] = np.pad(img[:, :, :3], ((top, bottom), (left, right), (0, 0)), constant_values=((144, 144), (144, 144), (0, 0)))
-    new_img[:, :, 3:] = np.pad(img[:, :, 3:], ((top, bottom), (left, right), (0, 0)), constant_values=((0, 0), (0, 0), (0, 0)))
+    new_img[:, :, :3] = np.pad(img[:, :, :3],
+                               ((top, bottom), (left, right), (0, 0)),
+                               constant_values=((144, 144), (144, 144), (0,
+                                                                         0)))
+    new_img[:, :, 3:] = np.pad(img[:, :, 3:],
+                               ((top, bottom), (left, right), (0, 0)),
+                               constant_values=((0, 0), (0, 0), (0, 0)))
 
     return new_img, ratio, (dw, dh)
 

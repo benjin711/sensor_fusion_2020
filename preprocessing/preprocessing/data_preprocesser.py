@@ -8,6 +8,8 @@ from scipy.spatial.transform import Slerp
 from scipy.ndimage.filters import uniform_filter1d
 from scipy import interpolate
 import pymap3d
+import open3d as o3d
+import itertools
 
 
 class DataPreprocesser:
@@ -56,10 +58,10 @@ class DataPreprocesser:
 
     def match_data_step_1(self):
         """
-        Matches triples of images with the same time stamp. This function
-        makes sure that images with the same time stamp also have the
-        same index. This function includes a black image whenever an image
-        is missing for a specific time stamp.
+        - Matches triples of images with the same time stamp
+        - Images with the same timestamp will have the same index
+        - A black image is included whenever an image is missing for a specific time stamp
+        - Car position and cone positions are also matched to every time stamp
         """
 
         # Read in the camera timestamp files
@@ -183,6 +185,7 @@ class DataPreprocesser:
         """
         Creates a folder for each camera and makes sure that
         images with the same index correspond to the same timestamp.
+        Images are also undistorted here.
         Additionally, this function adds dummy images.
         """
         for key in indices_dict:
@@ -223,6 +226,9 @@ class DataPreprocesser:
                         str(idx).zfill(8) + ".png")
 
                     shutil.copy(src_image_filepath, dst_image_filepath)
+
+                    undistort_image(self.data_folder_path, dst_image_filepath,
+                                    key)
                 else:
                     # Create a dummy image
                     dummy_image = np.zeros((self.height, self.width, 3),
@@ -242,7 +248,6 @@ class DataPreprocesser:
 
             if not self.keep_orig_data_folders:
                 shutil.rmtree(src_image_folder_path)
-                os.rename(dst_image_folder_path, src_image_folder_path)
 
     def match_data_step_2(self, motion_compensation):
         """
@@ -358,8 +363,6 @@ class DataPreprocesser:
 
             if not self.keep_orig_data_folders:
                 shutil.rmtree(src_point_cloud_folder_path)
-                os.rename(dst_point_cloud_folder_path,
-                          src_point_cloud_folder_path)
 
     def load_camera_transforms(self):
         """Open the calibration YAMLs and compute the transform
@@ -482,7 +485,7 @@ class DataPreprocesser:
         print("Filtering GNSS and Cones\n")
         src_gnss_folder_path = os.path.join(self.data_folder_path, "gnss")
         dst_gnss_folder_path = os.path.join(self.data_folder_path,
-                                            "gnss_filtered")
+                                            "car_position_filtered")
         dst_forward_cones_folder_path = os.path.join(self.data_folder_path,
                                                      "forward_cones_filtered")
         dst_left_cones_folder_path = os.path.join(self.data_folder_path,
@@ -567,4 +570,401 @@ class DataPreprocesser:
 
         if not self.keep_orig_data_folders:
             shutil.rmtree(src_gnss_folder_path)
-            os.rename(dst_gnss_folder_path, src_gnss_folder_path)
+
+    def extract_rotations(self):
+        # Determine the rotation between the two point clouds using ICP
+        # Write to folder called relative rotations and file called relative_rotations.bin
+
+        naming = "relative_rotations"
+
+        print(
+            "Calculating relative rotations between consecutive point clouds")
+
+        relative_rotations_folder = os.path.join(self.data_folder_path, naming)
+
+        # Create a folder to store the relative rotations in
+        if os.path.exists(relative_rotations_folder):
+            print(
+                "The folder relative_rotations exist already indicating that they have already been calculated!"
+            )
+            print(
+                "relative_rotations will be removed and the relative rotations will be recalculated."
+            )
+            shutil.rmtree(relative_rotations_folder)
+        os.makedirs(relative_rotations_folder)
+
+        # List containing relative rotations
+        relative_rotations = []
+
+        # Choose to use front wing point clouds by default
+        # and fall back to mrh point clouds if front wing point clouds
+        # are not available
+        fw_lidar_folder = os.path.join(self.data_folder_path,
+                                       "fw_lidar_filtered")
+        mrh_lidar_folder = os.path.join(self.data_folder_path,
+                                        "mrh_lidar_filtered")
+
+        if not os.path.exists(fw_lidar_folder) and not os.path.exists(
+                mrh_lidar_folder):
+            print(
+                "Relative rotations could not be extracted. Could not find following paths:\n{}\n{}"
+                .format(fw_lidar_folder, mrh_lidar_folder))
+            sys.exit()
+        elif os.path.exists(fw_lidar_folder):
+            which_pc = "fw"
+            pc_folder = fw_lidar_folder
+        else:
+            which_pc = "mrh"
+            pc_folder = mrh_lidar_folder
+
+        # Get a list of the point cloud files
+        point_cloud_files = os.listdir(pc_folder)
+        point_cloud_files.remove('timestamps.txt')
+        point_cloud_files = [
+            os.path.join(pc_folder, f) for f in point_cloud_files
+        ]
+        point_cloud_files.sort()
+
+        # Make a list of point cloud file pairs
+        point_cloud_file_pairs = np.vstack(
+            (np.array(point_cloud_files),
+             np.roll(np.array(point_cloud_files), shift=-1)))
+        point_cloud_file_pairs = list(
+            np.transpose(point_cloud_file_pairs)[:-1])
+
+        pbar = tqdm(total=len(point_cloud_file_pairs), desc=naming)
+
+        # Make a list of initial guesses for ICP
+        # Find the reference timestamps that correspond to the point clouds
+        if not self.reference_timestamps:
+            lidar_filepath_dict = {
+                which_pc: os.path.join(pc_folder, "timestamps.txt")
+            }
+            lidar_timestamps_array_dict = read_timestamps(lidar_filepath_dict)
+            self.reference_timestamps = lidar_timestamps_array_dict[which_pc]
+
+        # Calculate initial guesses for the transformations between consecutive
+        # point clouds
+        timestamps_start = self.reference_timestamps
+        timestamps_end = np.roll(self.reference_timestamps, shift=-1)
+        timestamp_pairs = np.transpose(
+            np.vstack((timestamps_start, timestamps_end)))[:-1]
+        initial_guesses = self.egomotion_compensator.get_transformations(
+            timestamp_pairs, src_frame="mrh_lidar", dst_frame="mrh_lidar")
+
+        MAX_CHANNEL = 20
+        MIN_DIST = 2
+
+        for point_cloud_file_pair, initial_guess in zip(
+                point_cloud_file_pairs, initial_guesses):
+            fw_pc_1 = read_point_cloud(point_cloud_file_pair[0])
+
+            channels_fw_pc_1 = fw_pc_1[:, 5]
+            channels_mask_fw_pc_1 = channels_fw_pc_1 < MAX_CHANNEL
+
+            dist_fw_pc_1 = np.linalg.norm(fw_pc_1[:, :3], axis=1)
+            dist_mask_fw_pc_1 = dist_fw_pc_1 > MIN_DIST
+
+            fw_pc_1 = fw_pc_1[np.logical_and(channels_mask_fw_pc_1,
+                                             dist_mask_fw_pc_1)]
+
+            fw_pcd_1 = o3d.geometry.PointCloud()
+            fw_pcd_1.points = o3d.utility.Vector3dVector(fw_pc_1[:, :3])
+
+            fw_pc_2 = read_point_cloud(point_cloud_file_pair[1])
+
+            channels_fw_pc_2 = fw_pc_2[:, 5]
+            channels_mask_fw_pc_2 = channels_fw_pc_2 < MAX_CHANNEL
+
+            dist_fw_pc_2 = np.linalg.norm(fw_pc_2[:, :3], axis=1)
+            dist_mask_fw_pc_2 = dist_fw_pc_2 > MIN_DIST
+
+            fw_pc_2 = fw_pc_2[np.logical_and(channels_mask_fw_pc_2,
+                                             dist_mask_fw_pc_2)]
+
+            fw_pcd_2 = o3d.geometry.PointCloud()
+            fw_pcd_2.points = o3d.utility.Vector3dVector(fw_pc_2[:, :3])
+
+            threshold = 1
+
+            reg_p2p = o3d.registration.registration_icp(
+                fw_pcd_1, fw_pcd_2, threshold, initial_guess,
+                o3d.registration.TransformationEstimationPointToPoint(),
+                o3d.registration.ICPConvergenceCriteria(max_iteration=2000))
+
+            r = R.from_matrix(reg_p2p.transformation[:3, :3])
+
+            evaluation = o3d.registration.evaluate_registration(
+                fw_pcd_1, fw_pcd_2, threshold, reg_p2p.transformation)
+
+            eval_metrics = [
+                evaluation.fitness, evaluation.inlier_rmse,
+                np.asarray(evaluation.correspondence_set).shape[0]
+            ]
+            rotation = list(r.as_euler('zyx', degrees=True))
+            rotation.extend(eval_metrics)
+
+            relative_rotations.append(rotation)
+
+            pbar.update(1)
+
+        pbar.close()
+
+        # Write to file
+        with open(os.path.join(relative_rotations_folder, naming + '.txt'),
+                  'w') as filehandle:
+            # Write a header explaining the data
+            filehandle.writelines(
+                "yaw, pitch, roll, icp_fitness, inlier_rmse, correspondence_set\n"
+            )
+
+            filehandle.writelines(
+                "{:.6f}, {:.6f}, {:.6f}, {}, {}, {}\n".format(
+                    rel_rot[0],
+                    rel_rot[1],
+                    rel_rot[2],
+                    rel_rot[3],
+                    rel_rot[4],
+                    rel_rot[5],
+                ) for rel_rot in relative_rotations)
+
+    def generate_dim(self):
+        """
+        Generates the DIM layers given the current data folder
+        """
+        def concatenate_pcs(pc_files):
+            """
+            Reads the point clouds provided by a numpy array of point
+            cloud file paths
+            """
+            pc = np.zeros((0, 6))
+
+            for pc_file in pc_files.tolist():
+                curr_pc = np.fromfile(pc_file, dtype=np.float64).reshape(-1, 6)
+                pc = np.vstack((pc, curr_pc))
+
+            return pc
+
+        def depth_color(points, min_d=0, max_d=30):
+            """
+            Print Color(HSV's H value) corresponding to distance(m)
+            close distance = red , far distance = blue
+            """
+            dist = np.sqrt(
+                np.add(np.power(points[:, 0], 2), np.power(points[:, 1], 2),
+                       np.power(points[:, 2], 2)))
+            np.clip(dist, 0, max_d, out=dist)
+
+            return (((dist - min_d) / (max_d - min_d)) * 128).astype(np.uint8)
+
+        def project(points, image, R, t, K, debug=False):
+            '''
+            Project points onto the image and generate the DI and M layers
+            '''
+
+            intensities = points[:, 3]
+            points = points[:, :3]
+
+            pixels, pixel_filter = project_points_to_pixels(
+                points, R, t, K, image.shape)
+
+            # Filter points, pixels and intensities
+            points = points[pixel_filter]
+            pixels = np.int32(pixels[pixel_filter])
+            intensities = intensities[pixel_filter]
+            depth = np.sqrt(np.sum(np.power(points, 2), axis=1))
+
+            depth_layer = np.zeros(image.shape[:-1], dtype=np.float16)
+            intensity_layer = np.zeros(image.shape[:-1], dtype=np.float16)
+
+            if debug:
+                hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+                color = depth_color(points)
+
+            for i in range(pixels.shape[0]):
+                if debug:
+                    cv2.circle(
+                        hsv_image,
+                        (np.int32(pixels[i, 0]), np.int32(pixels[i, 1])), 2,
+                        (int(color[i]), 255, 255), -1)
+
+                if depth[i] > depth_layer[pixels[i, 1], pixels[i, 0]]:
+                    depth_layer[pixels[i, 1], pixels[i, 0]] = depth[i]
+                    intensity_layer[pixels[i, 1], pixels[i,
+                                                         0]] = intensities[i]
+
+            mask_layer = (depth_layer > 0).astype(np.bool)
+
+            if debug:
+                projection = cv2.cvtColor(hsv_image, cv2.COLOR_HSV2BGR)
+                cv2.imshow('depth', projection)
+                cv2.waitKey(0)
+                cv2.destroyAllWindows()
+
+            return depth_layer, mask_layer, intensity_layer
+
+        cameras = ["forward", "left", "right"]
+        lidars = ["fw", "mrh"]
+
+        static_transformations_folder = os.path.join(self.data_folder_path,
+                                                     "..", "..",
+                                                     "static_transformations")
+
+        T_mrh_cam_dict = get_mrh_cam_transformations(
+            static_transformations_folder, cameras)
+        K_dict = get_intrinsics(static_transformations_folder, cameras)
+        pc_files_dict = get_pc_files(self.data_folder_path, lidars)
+        img_files_dict = get_img_files(self.data_folder_path, cameras)
+
+        for camera in cameras:
+
+            dst_di_folder_path = os.path.join(self.data_folder_path,
+                                              "{}_di".format(camera))
+            dst_m_folder_path = os.path.join(self.data_folder_path,
+                                             "{}_m".format(camera))
+            if os.path.exists(dst_di_folder_path):
+                print(
+                    "The folder {}_di exists already indicating that the data has already been extracted!"
+                    .format(camera))
+                print(
+                    "{}_di will be removed and the data will be reextracted.".
+                    format(camera))
+                shutil.rmtree(dst_di_folder_path)
+            os.makedirs(dst_di_folder_path)
+
+            if os.path.exists(dst_m_folder_path):
+                print(
+                    "The folder {}_m exist already indicating that the data has already been extracted!"
+                    .format(camera))
+                print("{}_m will be removed and the data will be reextracted.".
+                      format(camera))
+                shutil.rmtree(dst_m_folder_path)
+            os.makedirs(dst_m_folder_path)
+
+            K = K_dict[camera]
+            T_mrh_cam = T_mrh_cam_dict[camera]
+            img_files = img_files_dict[camera]
+            pc_files = np.array([
+                list(pc_files_dict.items())[x][1]
+                for x in range(len(pc_files_dict.keys()))
+            ])
+
+            pbar = tqdm(total=len(img_files),
+                        desc="DMI of {}_camera".format(camera))
+
+            for idx, img_file in enumerate(img_files):
+
+                pc = concatenate_pcs(pc_files[:, idx])[:, :4]
+                img = cv2.imread(img_file)
+
+                d, m, i = project(pc, img, T_mrh_cam[:3, :3], T_mrh_cam[:3, 3],
+                                  K)
+
+                di = np.stack((d, i), axis=2)
+
+                di.tofile(
+                    os.path.join(dst_di_folder_path,
+                                 str(idx).zfill(8) + ".bin"))
+                m.tofile(
+                    os.path.join(dst_m_folder_path,
+                                 str(idx).zfill(8) + ".bin"))
+
+                pbar.update(1)
+
+            pbar.close()
+
+    def match_lidar_cone_arrays(self):
+        # Pathing
+        folder_name = "lidar_cone_arrays"
+        src_folder = os.path.join(self.data_folder_path, folder_name)
+        dst_folder = os.path.join(self.data_folder_path,
+                                  folder_name + "_filtered")
+
+        if not os.path.exists(src_folder):
+            print("The src folder {} could not be found!".format(src_folder))
+            sys.exit()
+
+        # Create a filtered folder to copy the matched lidar cone arrays to
+        if os.path.exists(dst_folder):
+            print(
+                "The folder {}_filtered exist already indicating that the data has already been matched!"
+                .format(folder_name))
+            print(
+                "{}_filtered will be removed and the data will be rematched.".
+                format(folder_name))
+            shutil.rmtree(dst_folder)
+        os.makedirs(dst_folder)
+
+        lidar_cone_array_timestamps = get_lidar_cone_array_timestamps(
+            self.data_folder_path)[folder_name]
+        lidar_cone_array_files = get_lidar_cone_array_files(
+            self.data_folder_path)
+
+        reference_timestamps = self.reference_timestamps if self.reference_timestamps else get_reference_timestamps(
+            self.data_folder_path)["reference_timestamps"]
+
+        # 1) For every reference timestamp, chose the closest lidar cone array timestamp
+        # If none is available put a -1
+        # Result is an array with index elements that indicate which timestamp + cone array tuple belong to which reference timestamp
+        # For all cone arrays the original time stamp and the reference time stamp is needed
+        indices = []
+
+        for counter, reference_timestamp in enumerate(reference_timestamps):
+            timediff = lidar_cone_array_timestamps - reference_timestamp
+            timediff[timediff < 0] = np.inf
+
+            idx = timediff.argmin()
+
+            if timediff[idx] > 0.1:
+                indices.append(-1)
+                continue
+            else:
+                indices.append(idx)
+
+        # src timestamps: list with src timestamps and -1 at an idx where there is no proper src timestamp
+        # dst timestamps: reference timestamps
+        # Ts: transformations, -1 at an idx where there is no proper data
+        # cone_arrays: read every cone array, put into format with homogenous coordinates
+        # multiply cones with transformations,
+        # for loop: through the new cones, write transformed cones into new folder also write reference timestamps there
+
+        indices = np.array(indices)
+        pos_indices = indices[indices > 0]
+        src_timestamps = -1 * np.ones((len(reference_timestamps)))
+        src_timestamps[indices > 0] = lidar_cone_array_timestamps[pos_indices]
+        dst_timestamps = np.array(reference_timestamps)
+        Ts = np.zeros((len(reference_timestamps), 4, 4))
+        timestamps_tuple = np.vstack(
+            (src_timestamps[indices > 0], dst_timestamps[indices > 0])).T
+        Ts[indices > 0] = self.egomotion_compensator.get_transformations(
+            timestamps_tuple, src_frame="egomotion", dst_frame="egomotion")
+        MAX_NUM_CONES = 100
+        h_lidar_cone_arrays_src = np.zeros(
+            (lidar_cone_array_timestamps.shape[0], 4, MAX_NUM_CONES))
+        h_lidar_cone_arrays_dst = np.zeros(
+            (len(reference_timestamps), 4, MAX_NUM_CONES))
+        for idx, lidar_cone_array_file in enumerate(lidar_cone_array_files):
+            lidar_cone_array = np.fromfile(lidar_cone_array_file).reshape(
+                -1, 3)
+            num_cones = lidar_cone_array.shape[0]
+            h_lidar_cone_array = np.hstack(
+                (lidar_cone_array, np.ones((num_cones, 1))))
+            h_lidar_cone_arrays_src[idx, :, :num_cones] = h_lidar_cone_array.T
+
+        h_lidar_cone_arrays_dst[indices > 0] = Ts[
+            indices > 0] @ h_lidar_cone_arrays_src[pos_indices]
+
+        # Writing transformed cone arrays to file
+        for idx in range(h_lidar_cone_arrays_dst.shape[0]):
+            h_lidar_cone_array, mask = h_lidar_cone_arrays_dst[
+                idx, :3], h_lidar_cone_arrays_dst[idx, 3].astype(np.bool)
+            lidar_cone_array = (h_lidar_cone_array.T)[mask]
+
+            file_path = os.path.join(dst_folder, str(idx).zfill(8) + ".bin")
+
+            if lidar_cone_array.size == 0:
+                pass
+            else:
+                lidar_cone_array.tofile(file_path)
+
+        write_reference_timestamps(dst_folder, self.reference_timestamps)

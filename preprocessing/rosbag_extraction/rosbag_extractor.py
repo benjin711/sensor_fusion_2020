@@ -32,15 +32,15 @@ class RosbagExtractor:
         # If the moving_only_flag is true, extract from /tf topic first by
         # putting it at the first position
         if cfg.moving_only:
-            if "/tf" in cfg.topics:
-                try:
-                    cfg.topics.remove("/tf")
-                except:
-                    pass
 
-                tmp_list = ["/tf"]
-                tmp_list.extend(cfg.topics)
-                cfg.topics = tmp_list
+            try:
+                cfg.topics.remove("/tf")
+            except:
+                pass
+
+            tmp_list = ["/tf"]
+            tmp_list.extend(cfg.topics)
+            cfg.topics = tmp_list
 
         # Create a dictionary to correspond topic names to folder names
         self.topic_name_to_folder_name_dict = {
@@ -50,7 +50,8 @@ class RosbagExtractor:
             "/sensors/forward_camera/image_color": "forward_camera",
             "/sensors/left_camera/image_color": "left_camera",
             "/tf": "tf",
-            "/pilatus_can/GNSS": "gnss"
+            "/pilatus_can/GNSS": "gnss",
+            "/perception/lidar/cone_array": "lidar_cone_arrays"
         }
 
         # Create a dictionary to correspond topic names to data types
@@ -64,15 +65,20 @@ class RosbagExtractor:
             "/pilatus_can/GNSS": "gnss_data"
         }
 
-    def init_file_structure(self):
+    def init_file_structure(self, topics):
 
         if os.path.exists(self.data_folder):
             print(
                 "The directory {} exists already indicating that the rosbag has already been extracted before."
                 .format(os.path.splitext(self.rosbag_filename)[0]))
 
-            print("Reextracting rosbag. Cleaning old data.")
-            shutil.rmtree(self.data_folder)
+            for topic in topics:
+                topic_folder_path = os.path.join(
+                    self.data_folder, self.topic_name_to_folder_name_dict[topic])
+                if os.path.exists(topic_folder_path):
+                    print(
+                        "Reextracting msgs of the {} topic from rosbag. Cleaning old data.".format(topic))
+                    shutil.rmtree(topic_folder_path)
 
         else:
             os.makedirs(self.data_folder)
@@ -107,6 +113,11 @@ class RosbagExtractor:
         elif msg_type == "pilatus_can/GNSS":
             print("Extracting pilatus_can/GNSS")
             poses, timestamps = self.extract_pilatus_can_gnss(topic)
+
+        elif msg_type == "autonomous_msgs/ConeArray":
+            print("Extracting lidar pipeline cone arrays")
+            cone_arrays, timestamps = self.extract_perception_msgs_cone_array(
+                topic)
 
     def extract_sensor_msgs_point_cloud_2(self, topic):
         pbar = tqdm(total=self.type_and_topic_info[1][topic].message_count,
@@ -170,7 +181,6 @@ class RosbagExtractor:
         bridge = CvBridge()
 
         for _, msg, _ in self.bag.read_messages(topics=[topic]):
-            pbar.update(1)
 
             timestamp = float("{}.{}".format(
                 str(msg.header.stamp.secs),
@@ -186,6 +196,8 @@ class RosbagExtractor:
             images.append(image)
 
             counter += 1
+
+            pbar.update(1)
 
         pbar.close()
 
@@ -207,7 +219,6 @@ class RosbagExtractor:
         transforms_dict = {}
 
         for _, msg, _ in self.bag.read_messages(topics=[topic]):
-            pbar.update(1)
 
             for transform in msg.transforms:
 
@@ -230,6 +241,8 @@ class RosbagExtractor:
                 t.append(transform.transform.rotation.w)
 
                 transforms_dict[key].append(t)
+
+            pbar.update(1)
 
         pbar.close()
 
@@ -275,7 +288,6 @@ class RosbagExtractor:
         initial_pose_count = 0
 
         for _, msg, _ in self.bag.read_messages(topics=[topic]):
-            pbar.update(1)
 
             timestamp = float("{}.{}".format(
                 str(msg.header.stamp.secs),
@@ -316,4 +328,54 @@ class RosbagExtractor:
             filehandle.writelines("{:.6f}\n".format(timestamp)
                                   for timestamp in timestamps)
 
+        pbar.update(1)
+
         return poses, timestamps
+
+    def extract_perception_msgs_cone_array(self, topic):
+
+        pbar = tqdm(total=self.type_and_topic_info[1][topic].message_count,
+                    desc=topic)
+
+        data_dir = os.path.join(self.data_folder,
+                                self.topic_name_to_folder_name_dict[topic])
+        if not os.path.exists(data_dir):
+            os.makedirs(data_dir)
+
+        counter = 0
+        timestamps = []
+        lidar_cone_arrays = []
+
+        for _, msg, _ in self.bag.read_messages(topics=[topic]):
+
+            timestamp = float("{}.{}".format(
+                str(msg.header.stamp.secs),
+                str(msg.header.stamp.nsecs).zfill(9)))
+
+            lidar_cone_array = np.zeros((0, 3))
+            for cone in msg.cones:
+                cone_position = np.array(
+                    [cone.position.x, cone.position.y, cone.position.z]).reshape(1, 3)
+                lidar_cone_array = np.vstack((
+                    lidar_cone_array, cone_position))
+
+            if self.moving_only_flag:
+                if timestamp < self.timestamp_started_driving or timestamp > self.timestamp_stopped_driving:
+                    continue
+
+            lidar_cone_array_path = os.path.join(data_dir,
+                                                 str(counter).zfill(8) + '.bin')
+            write_cone_array(lidar_cone_array_path, lidar_cone_array)
+
+            timestamps.append(timestamp)
+            lidar_cone_arrays.append(lidar_cone_array)
+            pbar.update(1)
+            counter += 1
+
+        pbar.close()
+
+        with open(os.path.join(data_dir, 'timestamps.txt'), 'w') as filehandle:
+            filehandle.writelines("{:.6f}\n".format(timestamp)
+                                  for timestamp in timestamps)
+
+        return lidar_cone_arrays, timestamps
