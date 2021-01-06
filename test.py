@@ -490,11 +490,10 @@ def test(
         "Image Width":
         width,
         "Model Inference Speed in ms per batch size":
-        t0,
+        t0 / seen * 1e3,
         "NMS and Filtering Speed in ms per batch size":
-        t1,
-        "Total Inference Speed":
-        t0 + t1,
+        t1 / seen * 1e3,
+        "Total Inference Speed": (t0 + t1) / seen * 1e3,
         "Batch Size":
         batch_size
     }
@@ -510,18 +509,19 @@ def test(
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='test.py')
-    parser.add_argument('--weights',
-                        nargs='+',
-                        type=str,
-                        default='yolov4mmish.pt',
-                        help='model.pt path(s)')
+    parser.add_argument(
+        '--weights',
+        nargs='+',
+        type=str,
+        default='/cluster/home/benjin/git/sensor_fusion_2020/runs/exp6/best.pt',
+        help='model.pt path(s)')
     parser.add_argument('--data',
                         type=str,
                         default='data/amz_tiny.yaml',
                         help='*.data path')
     parser.add_argument('--batch-size',
                         type=int,
-                        default=32,
+                        default=1,
                         help='size of each image batch')
     parser.add_argument('--img-size',
                         type=int,
@@ -529,11 +529,11 @@ if __name__ == '__main__':
                         help='inference size (pixels)')
     parser.add_argument('--conf-thres',
                         type=float,
-                        default=0.001,
+                        default=0.01,
                         help='object confidence threshold')
     parser.add_argument('--iou-thres',
                         type=float,
-                        default=0.65,
+                        default=0.3,
                         help='IOU threshold for NMS')
     parser.add_argument('--save-json',
                         action='store_true',
