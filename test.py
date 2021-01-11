@@ -2,6 +2,10 @@ import argparse
 import json
 import pickle
 import sys
+import torch
+import numpy as np
+import yaml
+import torch
 
 from models.experimental import *
 from utils.datasets import *
@@ -38,7 +42,6 @@ def test(
         weights=None,
         batch_size=16,
         imgsz=640,  # for NMS
-        save_json=False,
         single_cls=False,
         augment=False,
         verbose=False,
@@ -46,7 +49,7 @@ def test(
         dataloader=None,
         save_dir='',
         merge=False,
-        save_txt=False,
+        save_bin=True,
         generate_depth_stats=False,
         stride=32):
     # Initialize/load model and set device
@@ -56,8 +59,8 @@ def test(
 
     else:  # called directly
         device = torch_utils.select_device(opt.device, batch_size=batch_size)
-        merge, save_txt, save_bin = opt.merge, opt.save_txt, opt.save_bin  # use Merge NMS, save *.txt labels
-        if save_txt or save_bin:
+        merge, save_bin = opt.merge, opt.save_bin  # use Merge NMS, save *.txt labels
+        if save_bin:
             out = Path('inference/output')
             if os.path.exists(out):
                 shutil.rmtree(out)  # delete output folder
@@ -95,24 +98,6 @@ def test(
         path = data['test'] if opt.task == 'test' else data[
             'val']  # path to val/test images
 
-        # For one time run only
-        # EVAL_SF_EXTEND_TEST_SET = True
-        # if EVAL_SF_EXTEND_TEST_SET:
-        #     with open(path, "r") as f:
-        #         orig_paths = f.readlines()
-
-        #     with open(os.path.join(os.path.dirname(path), "ben_test_extended.txt"), "w") as f:
-        #         cameras = ["forward", "left", "right"]
-        #         for orig_path in orig_paths:
-        #             which_camera = [camera for camera in cameras if orig_path.find(camera) > 0][0]
-
-        #             for camera in cameras:
-        #                 f.write(orig_path.replace(which_camera, camera))
-        #                 if not os.path.exists(orig_path.replace(which_camera, camera)):
-        #                     tmp = np.zeros((0,3))
-        #                     tmp.tofile(orig_path.replace(which_camera, camera).rstrip("\n"))
-
-
         dataloader, dataset = \
         create_dataloader(path, imgsz, batch_size, model.stride.max(), opt,
                           hyp=hyp, augment=False, cache=False, pad=0,
@@ -144,14 +129,6 @@ def test(
     for batch_i, (img, targets, paths,
                   shapes) in enumerate(tqdm(dataloader, desc=s)):
         img = img.to(device, non_blocking=True)
-        #       img = img.half() if half else img.float()  # uint8 to fp16/32
-        img[:, :3, :, :] /= 255.0  # Rescale RGB
-        img[:, 3, :, :] /= 255.0  # Rescale depth
-
-        b, _, w, h = img.shape
-        rgbs = torch.cat(
-            (img[:, :3, :, :], torch.ones(b, 1, w, h).to(img.device)), dim=1)
-        img = torch.cat((rgbs, img[:, 3:, ::]), dim=1)
         img = img.half() if half else img.float()  # uint8 to fp16/32
         img[:, :3, :, :] /= 255.0  # Rescale RGB
         img[:, 3, :, :] /= 255.0  # Rescale depth
@@ -167,7 +144,8 @@ def test(
 
         # Disable gradients
         with torch.no_grad():
-            # Run model
+
+            ### RUN MODEL ###
             t = torch_utils.time_synchronized()
             inf_out, train_out = model(
                 img, augment=augment)  # inference and training outputs
@@ -189,7 +167,6 @@ def test(
             t1 += torch_utils.time_synchronized() - t
 
         # Statistics per image
-
         for si, pred in enumerate(output):
             labels = targets[targets[:, 0] == si, 1:]
             nl = len(labels)
@@ -201,25 +178,6 @@ def test(
                     stats.append((torch.zeros(0, niou, dtype=torch.bool),
                                   torch.Tensor(), torch.Tensor(), tcls))
                 continue
-
-            # Append to text file
-            if save_txt:
-                gn = torch.tensor(shapes[si][0])[[1, 0, 1, 0
-                                                  ]]  # normalization gain whwh
-                base = os.path.dirname(paths[si])
-                base = str(out / Path(base[1:]))
-                stem = str(Path(paths[si]).stem) + ".txt"
-                os.makedirs(base, exist_ok=True)
-
-                pred[:, :4] = scale_coords(img[si].shape[1:], pred[:, :4],
-                                           shapes[si][0],
-                                           shapes[si][1])  # to original
-                for *xyxy, conf, cls, dpth in pred:
-                    xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) /
-                            gn).view(-1).tolist()  # normalized xywh
-                    with open(os.path.join(base, stem), 'a') as f:
-                        f.write(('%g ' * 6 + '\n') %
-                                (cls, *xywh, dpth))  # label format
 
             if save_bin:
                 gn = torch.tensor(shapes[si][0])[[1, 0, 1, 0
@@ -248,28 +206,6 @@ def test(
 
             # Clip boxes to image bounds
             clip_coords(pred, (height, width))
-
-            # Append to pycocotools JSON dictionary
-            if save_json:
-                # [{"image_id": 42, "category_id": 18, "bbox": [258.15, 41.29, 348.26, 243.78], "score": 0.236}, ...
-                image_id = paths[si]
-                box = pred[:, :4].clone()  # xyxy
-                scale_coords(img[si].shape[1:], box, shapes[si][0],
-                             shapes[si][1])  # to original shape
-                box = xyxy2xywh(box)  # xywh
-                box[:, :2] -= box[:, 2:] / 2  # xy center to top-left corner
-                for p, b in zip(pred.tolist(), box.tolist()):
-                    jdict.append({
-                        'image_id':
-                        int(image_id) if image_id.isnumeric() else image_id,
-                        'category_id':
-                        coco91class[int(p[5])],
-                        'bbox': [round(x, 3) for x in b],
-                        'score':
-                        round(p[4], 5),
-                        'depth':
-                        p[6]
-                    })
 
             # Assign all predictions as incorrect
             correct = torch.zeros(pred.shape[0],
@@ -392,33 +328,6 @@ def test(
             'Speed: %.1f/%.1f/%.1f ms inference/NMS/total per %gx%g image at batch-size %g'
             % t)
 
-    # Save JSON
-    if save_json and len(jdict):
-        f = 'detections_val2017_%s_results.json' % \
-            (weights.split(os.sep)[-1].replace('.pt', '') if isinstance(weights, str) else '')  # filename
-        print('\nCOCO mAP with pycocotools... saving %s...' % f)
-        with open(f, 'w') as file:
-            json.dump(jdict, file)
-
-        try:  # https://github.com/cocodataset/cocoapi/blob/master/PythonAPI/pycocoEvalDemo.ipynb
-            from pycocotools.coco import COCO
-            from pycocotools.cocoeval import COCOeval
-
-            imgIds = [int(Path(x).stem) for x in dataloader.dataset.img_files]
-            cocoGt = COCO(
-                glob.glob('../coco/annotations/instances_val*.json')
-                [0])  # initialize COCO ground truth api
-            cocoDt = cocoGt.loadRes(f)  # initialize COCO pred api
-            cocoEval = COCOeval(cocoGt, cocoDt, 'bbox')
-            cocoEval.params.imgIds = imgIds  # image IDs to evaluate
-            cocoEval.evaluate()
-            cocoEval.accumulate()
-            cocoEval.summarize()
-            map, map50 = cocoEval.stats[:
-                                        2]  # update results (mAP@0.5:0.95, mAP@0.5)
-        except Exception as e:
-            print('ERROR: pycocotools unable to run: %s' % e)
-
     # Return results
     model.float()  # for training
     maps = np.zeros(nc) + map
@@ -489,11 +398,11 @@ def test(
         height,
         "Image Width":
         width,
-        "Model Inference Speed in ms per batch size":
+        "Model Inference Speed in ms per Image":
         t0,
-        "NMS and Filtering Speed in ms per batch size":
+        "NMS and Filtering Speed in ms per Image":
         t1,
-        "Total Inference Speed":
+        "Total Inference Speed in ms per Image":
         t0 + t1,
         "Batch Size":
         batch_size
@@ -513,15 +422,15 @@ if __name__ == '__main__':
     parser.add_argument('--weights',
                         nargs='+',
                         type=str,
-                        default='yolov4mmish.pt',
+                        default='weights/best_exp06.pt',
                         help='model.pt path(s)')
     parser.add_argument('--data',
                         type=str,
-                        default='data/amz_tiny.yaml',
+                        default='data/amz_data_splits.yaml',
                         help='*.data path')
     parser.add_argument('--batch-size',
                         type=int,
-                        default=32,
+                        default=1,
                         help='size of each image batch')
     parser.add_argument('--img-size',
                         type=int,
@@ -529,16 +438,13 @@ if __name__ == '__main__':
                         help='inference size (pixels)')
     parser.add_argument('--conf-thres',
                         type=float,
-                        default=0.001,
+                        default=0.01,
                         help='object confidence threshold')
     parser.add_argument('--iou-thres',
                         type=float,
-                        default=0.65,
+                        default=0.3,
                         help='IOU threshold for NMS')
-    parser.add_argument('--save-json',
-                        action='store_true',
-                        help='save a cocoapi-compatible JSON results file')
-    parser.add_argument('--task', default='val', help="'val', 'test', 'study'")
+    parser.add_argument('--task', default='test', help="'val', 'test', 'study'")
     parser.add_argument('--device',
                         default='',
                         help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
@@ -552,31 +458,29 @@ if __name__ == '__main__':
     parser.add_argument('--verbose',
                         action='store_true',
                         help='report mAP by class')
-    parser.add_argument('--save-txt',
+    parser.add_argument('--save-bin',
                         action='store_true',
-                        help='save results to *.txt')
+                        help='save predictions to *.bin')
     parser.add_argument('--rgb_drop',
                         action='store_true',
-                        help='Inference on lidar only for 50% of the time')
+                        help='Inference on only lidar depth layer for 50% of the time')
     parser.add_argument('--generate-depth-stats',
                         action='store_true',
                         help='Generate histogram with depth error')
     opt = parser.parse_args()
-    opt.save_json |= opt.data.endswith('coco.yaml')
     opt.data = check_file(opt.data)  # check file
     print(opt)
 
     if opt.task in ['val', 'test']:  # run normally
-        ret = test(opt.data,
-                   opt.weights,
-                   opt.batch_size,
-                   opt.img_size,
-                   opt.conf_thres,
-                   opt.iou_thres,
-                   opt.save_json,
-                   opt.single_cls,
-                   opt.augment,
-                   opt.verbose,
+        ret = test(data=opt.data,
+                   weights=opt.weights,
+                   batch_size=opt.batch_size,
+                   imgsz=opt.img_size,
+                   conf_thres=opt.conf_thres,
+                   iou_thres=opt.iou_thres,
+                   single_cls=opt.single_cls,
+                   augment=opt.augment,
+                   verbose=opt.verbose,
                    generate_depth_stats=opt.generate_depth_stats)
 
     elif opt.task == 'study':  # run over a range of settings and save/plot
@@ -591,7 +495,7 @@ if __name__ == '__main__':
             for i in x:  # img-size
                 print('\nRunning %s point %s...' % (f, i))
                 r, _, t = test(opt.data, weights, opt.batch_size, i,
-                               opt.conf_thres, opt.iou_thres, opt.save_json)
+                               opt.conf_thres, opt.iou_thres)
                 y.append(r + t)  # results and times
             np.savetxt(f, y, fmt='%10.6g')  # save
         os.system('zip -r study.zip study_*.txt')

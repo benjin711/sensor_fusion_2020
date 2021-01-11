@@ -676,8 +676,6 @@ def build_targets(p, targets, model):
 
 
 def non_max_suppression(prediction,
-                        paths,
-                        imgs,
                         conf_thres,
                         iou_thres,
                         merge=False,
@@ -710,13 +708,7 @@ def non_max_suppression(prediction,
 
     t = time.time()
     output = [None] * prediction.shape[0]
-    counter = 0
-    for xi, (x, path,
-             img) in enumerate(zip(prediction, paths,
-                                   imgs)):  # image index, image inference
-        counter += 1
-        if counter > 4:
-            sys.exit()
+    for xi, x in enumerate(prediction): 
         # Apply constraints
         # x[((x[..., 2:4] < min_wh) | (x[..., 2:4] > max_wh)).any(1), 4] = 0  # width-height
         x = x[xc[xi]]  # confidence

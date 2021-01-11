@@ -27,8 +27,7 @@ runs
 .debug
 
 # Files that are machine dependent
-data/amz_tiny_full.yaml
-data/ben_full/*
+data/amz_data_splits.yaml
 data/full/*
 
 # Images
@@ -46,3 +45,6 @@ lsf**
 
 # Inference Folder
 inference
+
+# Model Weights
+**.pt
