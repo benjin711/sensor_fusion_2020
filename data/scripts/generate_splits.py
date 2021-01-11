@@ -70,3 +70,19 @@ if __name__ == '__main__':
 
 
 
+        # For one time run only
+        # EVAL_SF_EXTEND_TEST_SET = True
+        # if EVAL_SF_EXTEND_TEST_SET:
+        #     with open(path, "r") as f:
+        #         orig_paths = f.readlines()
+
+        #     with open(os.path.join(os.path.dirname(path), "ben_test_extended.txt"), "w") as f:
+        #         cameras = ["forward", "left", "right"]
+        #         for orig_path in orig_paths:
+        #             which_camera = [camera for camera in cameras if orig_path.find(camera) > 0][0]
+
+        #             for camera in cameras:
+        #                 f.write(orig_path.replace(which_camera, camera))
+        #                 if not os.path.exists(orig_path.replace(which_camera, camera)):
+        #                     tmp = np.zeros((0,3))
+        #                     tmp.tofile(orig_path.replace(which_camera, camera).rstrip("\n"))

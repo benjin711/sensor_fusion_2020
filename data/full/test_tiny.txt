@@ -1,0 +1,10 @@
+/cluster/scratch/cafang/sensor_fusion_data/2020-07-05_tuggen/data/autocross_2020-07-05-11-58-07/left_labels/00000762.txt
+/cluster/scratch/cafang/sensor_fusion_data/2020-07-05_tuggen/data/autocross_2020-07-05-11-58-07/left_labels/00000163.txt
+/cluster/scratch/cafang/sensor_fusion_data/2020-08-02_tuggen/data/autocross_2020-08-02-12-01-19/forward_labels/00000213.txt
+/cluster/scratch/cafang/sensor_fusion_data/2020-07-05_tuggen/data/autocross_2020-07-05-12-35-31/left_labels/00000391.txt
+/cluster/scratch/cafang/sensor_fusion_data/2020-07-05_tuggen/data/autocross_2020-07-05-11-58-07/right_labels/00000501.txt
+/cluster/scratch/cafang/sensor_fusion_data/2020-07-05_tuggen/data/autocross_2020-07-05-13-57-26/right_labels/00000161.txt
+/cluster/scratch/cafang/sensor_fusion_data/2020-08-02_tuggen/data/autocross_2020-08-02-12-01-19/right_labels/00000617.txt
+/cluster/scratch/cafang/sensor_fusion_data/2020-08-02_tuggen/data/autocross_2020-08-02-12-01-19/right_labels/00000173.txt
+/cluster/scratch/cafang/sensor_fusion_data/2020-07-05_tuggen/data/autocross_2020-07-05-13-57-26/right_labels/00000362.txt
+/cluster/scratch/cafang/sensor_fusion_data/2020-07-05_tuggen/data/autocross_2020-07-05-11-58-07/right_labels/00000276.txt

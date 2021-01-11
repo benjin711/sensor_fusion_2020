@@ -13,3 +13,8 @@ The model implementation is based on
 described in [this paper](https://arxiv.org/abs/2004.10934).
 
 Forked on 2020/10/28.
+
+## Usage
+Python Version 3.8 is being used. On leonhard, use the command ```module load gcc/6.3.0 python_gpu/3.8.5```, you could add this to your .bashrc file. Locally, I have been using pipenv virtual environments, but they don't seem to work on leonhard. Files are formatted using yapf (at least the ones that I modified). 
+
+Models are in the perception folder on gdrive as well as the NAS in pilatus-2021/sensor_fusion_model_weights and need to be downloaded e.g. into the weights folder.
