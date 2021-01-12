@@ -2,7 +2,7 @@
 # Provide files that specify the labels belonging to a data split
 train: /cluster/home/benjin/git/sensor_fusion_2020/data/full/train.txt
 val: /cluster/home/benjin/git/sensor_fusion_2020/data/full/val.txt
-test: /cluster/home/benjin/git/sensor_fusion_2020/data/full/test.txt
+test: /cluster/home/benjin/git/sensor_fusion_2020/data/full/test_sf.txt
 
 # number of classes
 nc: 2
