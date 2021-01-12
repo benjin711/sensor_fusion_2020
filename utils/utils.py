@@ -782,30 +782,32 @@ def non_max_suppression(prediction,
             continue
 
         # "Box inside another box" filtering
-        w, h = np.array(x[:, 2, None] -
-                        x[:, 0, None]), np.array(x[:, 3, None] - x[:, 1, None])
-        centers = 0.5 * np.hstack((w, h)) + np.array(x[:, :2])
+        # This implementation is too slow 60ms!
+        # w, h = np.array(x[:, 2, None] -
+        #                 x[:, 0, None]), np.array(x[:, 3, None] - x[:, 1, None])
+        # centers = 0.5 * np.hstack((w, h)) + np.array(x[:, :2])
 
-        center_tree = KDTree(centers)
+        # center_tree = KDTree(centers)
 
-        p_indices = []
-        n_indices = []
-        for idx in range(centers.shape[0]):
-            ball_neighbor_indices = center_tree.query_ball_point(
-                centers[idx], np.min((w[idx] / 4, h[idx] / 4)))
-            am = torch.argmax(x[ball_neighbor_indices, 4])
-            p_indices.append(ball_neighbor_indices[am])
-            del ball_neighbor_indices[am]
-            n_indices.extend(ball_neighbor_indices)
+        # p_indices = []
+        # n_indices = []
+        # for idx in range(centers.shape[0]):
+        #     ball_neighbor_indices = center_tree.query_ball_point(
+        #         centers[idx], np.min((w[idx] / 4, h[idx] / 4)))
+        #     am = torch.argmax(x[ball_neighbor_indices, 4])
+        #     p_indices.append(ball_neighbor_indices[am])
+        #     del ball_neighbor_indices[am]
+        #     n_indices.extend(ball_neighbor_indices)
 
-        p_indices, n_indices = np.unique(p_indices), np.unique(n_indices)
-        ind, c = np.unique(np.concatenate((p_indices, n_indices)),
-                           return_counts=True)
-        ind_to_remove = ind[np.argwhere(c > 1)]
+        # p_indices, n_indices = np.unique(p_indices), np.unique(n_indices)
+        # ind, c = np.unique(np.concatenate((p_indices, n_indices)),
+        #                    return_counts=True)
+        # ind_to_remove = ind[np.argwhere(c > 1)]
+        # output[xi] = x[np.unique(p_indices)]
 
         ## to be continued: remove the ind_to_remove from p_indices
 
-        output[xi] = x[np.unique(p_indices)]
+        output[xi] = x
 
         # boxes, scores = output[xi][:, :4] + output[xi][:, 5:6] * max_wh, output[
         #     xi][:, 4]  # boxes (offset by class), scores

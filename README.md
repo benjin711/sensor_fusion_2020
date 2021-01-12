@@ -17,4 +17,9 @@ Forked on 2020/10/28.
 ## Usage
 Python Version 3.8 is being used. On leonhard, use the command ```module load gcc/6.3.0 python_gpu/3.8.5```, you could add this to your .bashrc file. Locally, I have been using pipenv virtual environments, but they don't seem to work on leonhard. Files are formatted using yapf (at least the ones that I modified). 
 
-Models are in the perception folder on gdrive as well as the NAS in pilatus-2021/sensor_fusion_model_weights and need to be downloaded e.g. into the weights folder.
+Models are in the perception folder on gdrive as well as the NAS in pilatus-2021/sensor_fusion_model_weights and need to be downloaded e.g. into the weights folder. Inference can be run by using the test.py script on leonhard or locally, e.g.:
+```
+bsub -W 4:00 -n 20 -R "rusage[mem=4500, ngpus_excl_p=1]" python test.py --batch-size 1 --img-size 1280 --iou-thres 0.3 --conf-thres 0.01 --task test --merge --generate-depth-stats --device 0
+python test.py --save-bin
+
+```
