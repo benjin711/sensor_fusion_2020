@@ -114,7 +114,7 @@ def test(
     coco91class = coco80_to_coco91_class()
     s = ('%20s' + '%12s' * 7) % ('Class', 'Images', 'Targets', 'P', 'R',
                                  'mAP@.5', 'mAP@.5:.95', 'Depth Error')
-    p, r, f1, mp, mr, map50, map, t0, t1, depth_err = 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.
+    p, r, f1, mp, mr, map50, map75, map, t0, t1, depth_err = 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.
     loss = torch.zeros(4, device=device)
     total_boxes = torch.zeros(1, device=device)
     jdict, stats, ap, ap_class = [], [], [], []
@@ -181,7 +181,7 @@ def test(
 
             if save_bin:
                 gn = torch.tensor(shapes[si][0])[[1, 0, 1, 0
-                                                  ]]  # normalization gain whwh
+                                                  ]].to(device)  # normalization gain whwh
                 base = os.path.dirname(paths[si])
                 base = str(out / Path(base[1:]))
                 stem = str(Path(paths[si]).stem) + ".txt"
@@ -322,7 +322,7 @@ def test(
 
     # Print speeds
     t = tuple(x / seen * 1E3
-              for x in (t0, t1, t0 + t1)) + (imgsz, imgsz, batch_size)  # tuple
+              for x in (t0, t1, t0 + t1)) + (height, width, batch_size)  # tuple
     if not training:
         print(
             'Speed: %.1f/%.1f/%.1f ms inference/NMS/total per %gx%g image at batch-size %g'
@@ -399,11 +399,11 @@ def test(
         "Image Width":
         width,
         "Model Inference Speed in ms per Image":
-        t0,
+        t[0],
         "NMS and Filtering Speed in ms per Image":
-        t1,
+        t[1],
         "Total Inference Speed in ms per Image":
-        t0 + t1,
+        t[2],
         "Batch Size":
         batch_size
     }
