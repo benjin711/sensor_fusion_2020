@@ -49,7 +49,7 @@ def test(
         dataloader=None,
         save_dir='',
         merge=False,
-        save_bin=True,
+        save_pkl=True,
         generate_depth_stats=False,
         stride=32):
     # Initialize/load model and set device
@@ -59,8 +59,8 @@ def test(
 
     else:  # called directly
         device = torch_utils.select_device(opt.device, batch_size=batch_size)
-        merge, save_bin = opt.merge, opt.save_bin  # use Merge NMS, save *.txt labels
-        if save_bin:
+        merge, save_pkl = opt.merge, opt.save_pkl  # use Merge NMS, save *.txt labels
+        if save_pkl:
             out = Path('inference/output')
             if os.path.exists(out):
                 shutil.rmtree(out)  # delete output folder
@@ -126,6 +126,9 @@ def test(
         'depth_error': []
     }
 
+    # To save predictions as pkl file
+    pred_pkl = {}
+
     for batch_i, (img, targets, paths,
                   shapes) in enumerate(tqdm(dataloader, desc=s)):
         img = img.to(device, non_blocking=True)
@@ -167,7 +170,7 @@ def test(
             t1 += torch_utils.time_synchronized() - t
 
         # Statistics per image
-        for si, pred in enumerate(output):
+        for si, (pred, path) in enumerate(zip(output, paths)):
             labels = targets[targets[:, 0] == si, 1:]
             nl = len(labels)
             tcls = labels[:, 0].tolist() if nl else []  # target class
@@ -179,30 +182,26 @@ def test(
                                   torch.Tensor(), torch.Tensor(), tcls))
                 continue
 
-            if save_bin:
-                gn = torch.tensor(shapes[si][0])[[1, 0, 1, 0
-                                                  ]].to(device)  # normalization gain whwh
-                base = os.path.dirname(paths[si])
-                base = str(out / Path(base[1:]))
-                stem = str(Path(paths[si]).stem) + ".txt"
-                os.makedirs(base, exist_ok=True)
+            if save_pkl:
+                gn = torch.tensor(shapes[si][0])[[1, 0, 1, 0]].to(
+                    device)  # normalization gain whwh
 
                 pred_tmp = scale_coords(img[si].shape[1:], pred[:, :4],
                                         shapes[si][0],
                                         shapes[si][1])  # to original
 
-                pred_bin = np.zeros((0, 6))
-                for *xyxy, (conf, cls, dpth) in zip(pred_tmp, pred[:, 4:]):
+                pred_pkl_ = np.zeros((0, 6))
+                for *xyxy, (conf, cls, dpth) in zip(pred_tmp, pred_pkl_[:,
+                                                                        4:]):
                     curr_cone = np.zeros(6)
                     xywh = (xyxy2xywh(xyxy[0].view(1, 4)) /
                             gn).view(-1).tolist()  # normalized xywh
                     curr_cone[0] = cls
                     curr_cone[1:5] = xywh
                     curr_cone[5] = dpth
-                    pred_bin = np.vstack((pred_bin, curr_cone.reshape(1, 6)))
+                    pred_pkl_ = np.vstack((pred_pkl_, curr_cone.reshape(1, 6)))
 
-                pred_bin.tofile(
-                    os.path.join(base, stem.replace('.txt', '.bin')))
+                pred_pkl[path] = pred_pkl_
 
             # Clip boxes to image bounds
             clip_coords(pred, (height, width))
@@ -279,6 +278,10 @@ def test(
                                       output_to_target(output, width, height),
                                       paths, str(f), names)  # predictions
 
+    if save_pkl:
+        with open('inference.pkl', 'wb') as inference_f:
+            pickle.dump(pred_pkl, inference_f, pickle.HIGHEST_PROTOCOL)
+
     if generate_depth_stats:
         plt.figure()
         ax = plt.gca()
@@ -321,8 +324,8 @@ def test(
                 names[c], seen, nt[c], p[i], r[i], ap50[i], ap75[i], ap[i]))
 
     # Print speeds
-    t = tuple(x / seen * 1E3
-              for x in (t0, t1, t0 + t1)) + (height, width, batch_size)  # tuple
+    t = tuple(x / seen * 1E3 for x in (t0, t1, t0 + t1)) + (
+        height, width, batch_size)  # tuple
     if not training:
         print(
             'Speed: %.1f/%.1f/%.1f ms inference/NMS/total per %gx%g image at batch-size %g'
@@ -444,7 +447,9 @@ if __name__ == '__main__':
                         type=float,
                         default=0.3,
                         help='IOU threshold for NMS')
-    parser.add_argument('--task', default='test', help="'val', 'test', 'study'")
+    parser.add_argument('--task',
+                        default='test',
+                        help="'val', 'test', 'study'")
     parser.add_argument('--device',
                         default='',
                         help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
@@ -458,12 +463,13 @@ if __name__ == '__main__':
     parser.add_argument('--verbose',
                         action='store_true',
                         help='report mAP by class')
-    parser.add_argument('--save-bin',
+    parser.add_argument('--save-pkl',
                         action='store_true',
-                        help='save predictions to *.bin')
-    parser.add_argument('--rgb_drop',
-                        action='store_true',
-                        help='Inference on only lidar depth layer for 50% of the time')
+                        help='save predictions to *.pkl')
+    parser.add_argument(
+        '--rgb_drop',
+        action='store_true',
+        help='Inference on only lidar depth layer for 50% of the time')
     parser.add_argument('--generate-depth-stats',
                         action='store_true',
                         help='Generate histogram with depth error')
