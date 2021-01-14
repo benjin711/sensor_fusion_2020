@@ -189,15 +189,16 @@ def test(
                                         shapes[si][0],
                                         shapes[si][1])  # to original
 
-                pred_pkl_ = np.zeros((0, 6))
+                pred_pkl_ = np.zeros((0, 7))
                 for *xyxy, (conf, cls, dpth) in zip(pred_tmp, pred[:, 4:]):
-                    curr_cone = np.zeros(6)
+                    curr_cone = np.zeros(7)
                     xywh = (xyxy2xywh(xyxy[0].view(1, 4)) /
                             gn).view(-1).tolist()  # normalized xywh
                     curr_cone[0] = cls
                     curr_cone[1:5] = xywh
                     curr_cone[5] = dpth
-                    pred_pkl_ = np.vstack((pred_pkl_, curr_cone.reshape(1, 6)))
+                    curr_cone[6] = conf
+                    pred_pkl_ = np.vstack((pred_pkl_, curr_cone.reshape(1, 7)))
 
                 pred_pkl[path[index:]] = pred_pkl_
 
