@@ -60,11 +60,6 @@ def test(
     else:  # called directly
         device = torch_utils.select_device(opt.device, batch_size=batch_size)
         merge, save_pkl = opt.merge, opt.save_pkl  # use Merge NMS, save *.txt labels
-        if save_pkl:
-            out = Path('inference/output')
-            if os.path.exists(out):
-                shutil.rmtree(out)  # delete output folder
-            os.makedirs(out)  # make new output folder
 
         # Remove previous
         for f in glob.glob(str(Path(save_dir) / 'test_batch*.jpg')):
