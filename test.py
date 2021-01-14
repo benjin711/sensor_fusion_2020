@@ -181,13 +181,16 @@ def test(
                 gn = torch.tensor(shapes[si][0])[[1, 0, 1, 0]].to(
                     device)  # normalization gain whwh
 
+                data_base = "sensor_fusion_data"
+                index = path.find(data_base)
+                index += len(data_base) + 1
+
                 pred_tmp = scale_coords(img[si].shape[1:], pred[:, :4],
                                         shapes[si][0],
                                         shapes[si][1])  # to original
 
                 pred_pkl_ = np.zeros((0, 6))
-                for *xyxy, (conf, cls, dpth) in zip(pred_tmp, pred_pkl_[:,
-                                                                        4:]):
+                for *xyxy, (conf, cls, dpth) in zip(pred_tmp, pred[:, 4:]):
                     curr_cone = np.zeros(6)
                     xywh = (xyxy2xywh(xyxy[0].view(1, 4)) /
                             gn).view(-1).tolist()  # normalized xywh
@@ -196,7 +199,7 @@ def test(
                     curr_cone[5] = dpth
                     pred_pkl_ = np.vstack((pred_pkl_, curr_cone.reshape(1, 6)))
 
-                pred_pkl[path] = pred_pkl_
+                pred_pkl[path[index:]] = pred_pkl_
 
             # Clip boxes to image bounds
             clip_coords(pred, (height, width))
