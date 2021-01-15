@@ -15,6 +15,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import matplotlib.cm as cmx
+from copy import deepcopy
 
 
 def command_line_parser():
@@ -43,7 +44,7 @@ def command_line_parser():
         '--mode',
         default='vis',
         type=str,
-        choices=['vis', 'metrics'],
+        choices=['vis', 'save_vis', 'metrics'],
         help=
         'Specify the mode of the program. Viz mode displays the predicted cones and ground truth cones in a BEV image. Metrics calculates the bar diagram quantifying the distance errors per distance range.'
     )
@@ -251,13 +252,14 @@ def match_cone_arrays(cfg):
                 xyd_array[:, 0], xyd_array[:, 1], xywhn_depth_array[:, 2] * w,
                 xywhn_depth_array[:, 3] * h
             ]).T
-            xyxyd_array = np.array([
+            xyxydc_array = np.array([
                 xyd_array[:, 0] - xywh_array[:, 2] / 2,
                 xyd_array[:, 1] - xywh_array[:, 3] / 2,
                 xyd_array[:, 0] + xywh_array[:, 2] / 2,
-                xyd_array[:, 1] + xywh_array[:, 3] / 2, xyd_array[:, 2]
+                xyd_array[:, 1] + xywh_array[:, 3] / 2, xyd_array[:,
+                                                                  2], cone_type
             ]).T
-            bb_arrays[camera] = xyxyd_array
+            bb_arrays[camera] = xyxydc_array
 
             # Load camera intrinsics and backproject to 3D
             cam_calib_file = os.path.join(os.path.dirname(img_path),
@@ -452,45 +454,74 @@ def visualize_cone_arrays(cfg):
         ax1_1.set_yticks(yticks)
 
         plt.tight_layout()
-        plt.savefig(str(index).zfill(8))
-        plt.show()
+        if cfg.mode == "save_vis":
+            plt.savefig("bev_" + str(index).zfill(4))
+        if cfg.mode == "vis":
+            plt.show()
 
         # Create image plot
         fig2, (ax2_1, ax2_2) = plt.subplots(nrows=1, ncols=2)
         fig2.set_figheight(3)
         fig2.set_figwidth(16)
-        ax2_1.imshow(np.flip(img["left"], axis=2))
+
+        # Plot left image iwth bounding boxes
+        img_l = cv2.cvtColor(img["left"], cv2.COLOR_BGR2RGB)
+        img_l = deepcopy(img_l)
+        for xyxydc in sf_bb_array_left:
+            color = (255, 255, 0) if xyxydc[5] else (0, 0, 255)
+            x1, y1 = tuple(xyxydc[:2].astype(np.int))
+            x2, y2 = tuple(xyxydc[2:4].astype(np.int))
+            cv2.rectangle(img_l, (int(x1), int(y1)), (int(x2), int(y2)), color,
+                          2)
+        ax2_1.imshow(img_l)
         ax2_1.set_title(keys["left"][keys["left"].find("data") + len("data") +
                                      1:])
         ax2_1.set_xticks([])
         ax2_1.set_yticks([])
-        ax2_2.imshow(np.flip(img["right"], axis=2))
+
+        # Plot right image iwth bounding boxes
+        img_r = cv2.cvtColor(img["right"], cv2.COLOR_BGR2RGB)
+        img_r = deepcopy(img_r)
+        for xyxydc in sf_bb_array_right:
+            color = (255, 255, 0) if xyxydc[5] else (0, 0, 255)
+            x1, y1 = tuple(xyxydc[:2].astype(np.int))
+            x2, y2 = tuple(xyxydc[2:4].astype(np.int))
+            cv2.rectangle(img_r, (int(x1), int(y1)), (int(x2), int(y2)), color,
+                          2)
+        ax2_2.imshow(img_r)
         ax2_2.set_title(keys["right"][keys["right"].find("data") +
                                       len("data") + 1:])
         ax2_2.set_xticks([])
         ax2_2.set_yticks([])
         plt.tight_layout(w_pad=2)
-        plt.savefig(str(index).zfill(8))
-        plt.show()
+        if cfg.mode == "save_vis":
+            plt.savefig("imgs_" + str(index).zfill(4))
+        if cfg.mode == "vis":
+            plt.show()
 
     print("Done")
 
 
 def calculate_metrics(cfg):
+    """
+    Loading in the predicted 3D cone arrays, bounding boxes + depth and the
+    ground truth cone arrays for calculating 3D detection errors.
+    """
 
-    if cfg.new_data:
-        cone_arrays_dict = match_cone_arrays(cfg)
-    else:
+    # Loading of ground truth and predicted cone arrays + bounding boxes
+    if cfg.cached_data:
         try:
-            with open("sf_cone_arrays_dict.pkl", "rb") as f:
+            with open("cone_arrays_dict.pkl", "rb") as f:
                 cone_arrays_dict = pickle.load(f)
         except:
             print("No cache file")
             cone_arrays_dict = match_cone_arrays(cfg)
+    else:
+        cone_arrays_dict = match_cone_arrays(cfg)
 
+    # Setting the maximal correspondence distance
     MAX_DIST_PREDICTED_TO_GT_CONE = 2
 
-    num_cone_arrays = len(cone_arrays_dict["sf"])
     num_bins = cfg.max_distance // cfg.interval_length
 
     pos_error = [[] for _ in range(num_bins)]
@@ -577,7 +608,7 @@ def main():
     cfg = command_line_parser()
     check_cfg(cfg)
 
-    if cfg.mode == "vis":
+    if cfg.mode == "vis" or cfg.mode == "save_vis":
         visualize_cone_arrays(cfg)
     elif cfg.mode == "metrics":
         calculate_metrics(cfg)
