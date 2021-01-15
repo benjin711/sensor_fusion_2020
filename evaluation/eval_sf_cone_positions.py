@@ -4,7 +4,9 @@ import os
 import re
 import yaml
 import numpy as np
-import pickle
+# Need pickle5 to be able load pickle protocol 5
+# which is default in python 3.8
+import pickle5 as pickle
 import cv2
 import pathlib
 import open3d as o3d
@@ -19,40 +21,32 @@ def command_line_parser():
     parser = argparse.ArgumentParser(
         add_help=True, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument('--new_data',
-                        action='store_true',
-                        help='Extract new data instead of using cached data')
+    parser.add_argument(
+        '--pred',
+        default=
+        '/media/benjin/Samsung_T5/AMZ/sensor_fusion_inference/inference.pkl',
+        type=str,
+        help='Specify path of the pickle file that contains the predictions')
 
     parser.add_argument(
-        '-gt',
-        '--gt_base_folder',
+        '--data',
         default='/media/benjin/Samsung_T5/AMZ/sensor_fusion_data',
         type=str,
-        help='Specify the base folder containing all the gt cone arrays')
+        help='Specify the base folder containing all the data')
+
+    parser.add_argument('--cached_data',
+                        action='store_true',
+                        help='Use the cached data instead')
 
     parser.add_argument(
-        '-pr',
-        '--pred_base_folder',
-        default='/home/benjin/Development/notes/tmp_data/inference/output',
+        '-m',
+        '--mode',
+        default='vis',
         type=str,
+        choices=['vis', 'metrics'],
         help=
-        'Specify local path of the folder that contains the sensor fusion predictions'
+        'Specify the mode of the program. Viz mode displays the predicted cones and ground truth cones in a BEV image. Metrics calculates the bar diagram quantifying the distance errors per distance range.'
     )
-
-    parser.add_argument(
-        '-l',
-        '--label_paths_file',
-        default=
-        '/home/benjin/Development/git/sensor_fusion_2020/data/ben_full/ben_test.txt',
-        type=str,
-        help='Specify which data split to calculate metrics on')
-
-    parser.add_argument('-m',
-                        '--mode',
-                        default='vis',
-                        type=str,
-                        choices=['vis', 'metrics'],
-                        help='Specify what the program should do')
 
     parser.add_argument(
         '-md',
@@ -62,12 +56,6 @@ def command_line_parser():
         help=
         'Maximal expected prediction distance. Every prediction above will be discarded.'
     )
-
-    parser.add_argument('-s',
-                        '--save_imgs',
-                        default=0,
-                        type=int,
-                        help='Number of images to save')
 
     parser.add_argument('-i',
                         '--interval_length',
@@ -86,7 +74,22 @@ def check_cfg(cfg):
         sys.exit()
 
 
+def extract_camera_from_path(gt_cone_array_path):
+    cameras = ["left", "right", "forward"]
+    for camera in cameras:
+        if gt_cone_array_path.find(camera) != -1:
+            return camera
+
+    print("No camera could be extracted from path!")
+    sys.exit()
+
+
 def match_cone_arrays(cfg):
+    """
+    Read in the predictions provided by test.py file and read in the ground truth cone
+    arrays. Calculate the 3D cones given the predictions and transform the resulting 
+    cone array in the egomotion frame. 
+    """
     def duplicate_gt(gt_cone_array_path, gt_cone_array_paths):
         reg_str = re.compile(
             gt_cone_array_path.replace('forward',
@@ -95,31 +98,6 @@ def match_cone_arrays(cfg):
         num_duplicates = sum(
             [bool(reg_str.match(path)) for path in gt_cone_array_paths])
         return num_duplicates > 0
-
-    def get_sf_cone_array_path(cfg, gt_cone_array_path):
-        cameras = ["left", "right", "forward"]
-        pred_cone_array_paths = []
-
-        pred_cone_array_path = os.path.join(cfg.pred_base_folder,
-                                            gt_cone_array_path[1:])
-
-        pred_cone_array_path = pred_cone_array_path.replace(
-            "_cones_corrected", "_camera_filtered")
-
-        which_camera = [
-            camera for camera in cameras
-            if pred_cone_array_path.find(camera) > 0
-        ][0]
-
-        for camera in cameras:
-            p = pred_cone_array_path.replace(which_camera, camera)
-            if os.path.exists(p):
-                pred_cone_array_paths.append(p)
-
-        if len(pred_cone_array_paths):
-            return pred_cone_array_paths
-        else:
-            return None
 
     def get_T_mrh_to_ego(static_transformations_folder):
         T_mrh_ego = np.eye(4)
@@ -161,15 +139,6 @@ def match_cone_arrays(cfg):
         p = pathlib.Path(test_day)
         return p.parts[1]
 
-    def extract_camera_from_path(gt_cone_array_path):
-        cameras = ["left", "right", "forward"]
-        for camera in cameras:
-            if gt_cone_array_path.find(camera) != -1:
-                return camera
-
-        print("No camera could be extracted from path!")
-        sys.exit()
-
     def load_rosparam_mat(yaml_dict, param_name):
         """Given a dict intended for ROS, convert the list to a matrix for a given key"""
         rows = yaml_dict[param_name]['rows']
@@ -202,80 +171,28 @@ def match_cone_arrays(cfg):
 
         return calib
 
-    #####################################################
+    def get_gt_cone_array(gt_cone_array_path):
+        """
+        Parameter: 
+        - gt_cone_array_path: path of the gt cone array file
+        Return:
+        - the gt cone array in the egomotion frame
+        """
 
-    cone_arrays_dict = {"sf": [], "gt": []}
-
-    with open(cfg.label_paths_file, "r") as f:
-        orig_label_paths = f.readlines()
-
-    gt_base_folder_name = os.path.basename(cfg.gt_base_folder)
-    index = orig_label_paths[0].find(gt_base_folder_name)
-    index += len(gt_base_folder_name) + 1
-
-    gt_cone_array_paths = []
-    sf_cone_array_paths = []
-    counter_1, counter_2, counter_3 = 0, 0, 0
-    for label_path in orig_label_paths:
-        label_path = os.path.join(cfg.gt_base_folder,
-                                  label_path[index:].rstrip())
-        if os.path.exists(label_path):
-            gt_cone_array_path = label_path.replace('labels',
-                                                    'cones_corrected').replace(
-                                                        'txt', 'bin')
-
-            if os.path.exists(gt_cone_array_path) and not duplicate_gt(
-                    gt_cone_array_path, gt_cone_array_paths):
-                # - [ ]  Filter out duplicates, meaning gt cone arrays that belong to the same timestamp
-                # - [ ]  For each gt_cone_array, find the corresponding lidar file path, skip if not found
-                sf_cone_array_path = get_sf_cone_array_path(
-                    cfg, gt_cone_array_path)
-                if sf_cone_array_path is not None:
-                    gt_cone_array_paths.append(gt_cone_array_path)
-                    sf_cone_array_paths.append(sf_cone_array_path)
-                else:
-                    counter_3 += 1
-            else:
-                counter_2 += 1
-        else:
-            counter_1 += 1
-
-    if counter_1:
-        print(
-            "{} specified label files don't exist on the local system. Data bases out of sync?"
-            .format(counter_1))
-    if counter_2:
-        print(
-            "{} specified gt cone array files don't exist on the local system. Data bases out of sync?"
-            .format(counter_2))
-
-    pbar = tqdm(total=len(gt_cone_array_paths), desc="Extracting cone arrays")
-
-    # All gt cone arrays are in their respective camera frame
-    counter = 0
-    for gt_cone_array_path, sf_cone_array_path in zip(gt_cone_array_paths,
-                                                      sf_cone_array_paths):
-
-        if cfg.mode == "vis":
-            if counter > 4:
-                break
-
-        # 1) Bring the gt cone arrays in the egomotion frame
-        test_day = extract_test_day_from_path(gt_cone_array_path,
-                                              cfg.gt_base_folder)
+        # Load necessary transformations
+        test_day = extract_test_day_from_path(gt_cone_array_path, cfg.data)
 
         T_mrh_ego = get_T_mrh_to_ego(
-            os.path.join(cfg.gt_base_folder, test_day,
-                         "static_transformations"))
+            os.path.join(cfg.data, test_day, "static_transformations"))
 
         camera = extract_camera_from_path(gt_cone_array_path)
 
         T_camera_mrh = get_T_camera_to_mrh(
-            os.path.join(cfg.gt_base_folder, test_day,
-                         "static_transformations"), camera)
+            os.path.join(cfg.data, test_day, "static_transformations"), camera)
 
         T_camera_ego = T_mrh_ego @ T_camera_mrh
 
+        # Load gt cone array and transform to egomotion
         gt_cone_array = np.fromfile(gt_cone_array_path).reshape(-1, 4)
         cone_types = gt_cone_array[:, 0]
         cone_positions = gt_cone_array[:, 1:]
@@ -285,21 +202,43 @@ def match_cone_arrays(cfg):
         h_cone_positions = T_camera_ego @ h_cone_positions.T
         gt_cone_array = np.hstack(
             (cone_types.reshape(-1, 1), h_cone_positions.T[:, :3]))
-        cone_arrays_dict["gt"].append(gt_cone_array)
 
-        # 2) Bring the sf cone arrays in the egomotion frame
-        # 2.1) Read the sf cone arrays into arrays
-        # sf_cone_array = np.zeros((0,3))
-        sf_cone_array = []
-        sf_cone_array_path.sort()
-        for p in sf_cone_array_path:
-            img_path = p.replace(cfg.pred_base_folder,
-                                 "").replace(".bin", ".png")
+        return gt_cone_array
+
+    def get_sf_cone_array(data_folder, key, predictions):
+        """
+        Parameter: 
+        - data_folder: path of the data folder (sensor_fusion_data)
+        - key: key to the cone array prediction
+        - predictions: dictionary containing all predicted cone arrays
+        Return:
+        - the predicted sensor fusion cone array in the egomotion frame
+        """
+
+        # Check that we have predictions for left and right camera images
+        camera_key_dict = {}
+        which_camera = extract_camera_from_path(key)
+        for camera in ["left", "right"]:
+            key_ = key.replace(which_camera, camera)
+
+            if key_ not in predictions:
+                return None, None, False
+            camera_key_dict[camera] = key_
+
+        # Load bounding box arrays and calculate the corresponding cone arrays
+        cone_arrays = {}
+        bb_arrays = {}
+
+        for (camera, key_) in camera_key_dict.items():
+            cxywhdc_array = predictions[key_]
+
+            # Back project predictions to 3D using 2D cone tip position and depth
+            img_path = os.path.join(cfg.data, key_)
             img = cv2.imread(img_path)
             h, w, _ = img.shape
-            cxywhn_depth_array = np.fromfile(p).reshape(-1, 6)
-            c = cxywhn_depth_array[:, 0]
-            xywhn_depth_array = cxywhn_depth_array[:, 1:6]
+            cone_type = cxywhdc_array[:, 0]
+            xywhn_depth_array = cxywhdc_array[:, 1:6]
+            conf = cxywhdc_array[:, 6]
 
             xyd_array = np.array([
                 xywhn_depth_array[:, 0] * w,
@@ -307,59 +246,25 @@ def match_cone_arrays(cfg):
                 xywhn_depth_array[:, 4]
             ]).T
 
-            jet = cm = plt.get_cmap('hsv')
-            cNorm = colors.Normalize(vmin=0, vmax=xyd_array.shape[0])
-            scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=jet)
-
-            # Convert xywhn to xyxy
+            # Convert xywhn_depth to xyxyd
             xywh_array = np.array([
                 xyd_array[:, 0], xyd_array[:, 1], xywhn_depth_array[:, 2] * w,
                 xywhn_depth_array[:, 3] * h
             ]).T
-            xyxy_array = np.array([
+            xyxyd_array = np.array([
                 xyd_array[:, 0] - xywh_array[:, 2] / 2,
                 xyd_array[:, 1] - xywh_array[:, 3] / 2,
                 xyd_array[:, 0] + xywh_array[:, 2] / 2,
-                xyd_array[:, 1] + xywh_array[:, 3] / 2
+                xyd_array[:, 1] + xywh_array[:, 3] / 2, xyd_array[:, 2]
             ]).T
+            bb_arrays[camera] = xyxyd_array
 
-            for idx, xyxy in enumerate(xyxy_array):
-                # cv2.circle(
-                #     img, tuple(xy.astype(np.int)), 4,
-                #     tuple(int(s * 255) for s in scalarMap.to_rgba(idx)[:3]), 2)
-                color = (255, 0, 0) if c[idx] else (0, 0, 255)
-                cv2.rectangle(img,
-                              tuple(xyxy[:2].astype(np.int)),
-                              tuple(xyxy[2:4].astype(np.int)),
-                              color,
-                              thickness=2,
-                              lineType=cv2.LINE_AA)
-
-            which_camera = [
-                camera for camera in ["forward", "left", "right"]
-                if img_path.find(camera) > 0
-            ][0]
-
-            #### QUICK HACK TO ONLY INCLUDE RIGHT AND LEFT SF CONE ARRAYS
-            if which_camera == "forward":
-                continue
-            #print(xyd_array)
-            #print(xywhn_depth_array)
-            if cfg.mode == "vis":
-                cv2.imshow(which_camera, img)
-                cv2.waitKey(0)
-                cv2.destroyAllWindows()
-
-            if counter < cfg.save_imgs:
-                cv2.imwrite(p.replace("bin", "png"), img)
-
-            # 2.2) For each prediction
-            # 1) convert the pixel + depth into x,y,z in camera frame
-
+            # Load camera intrinsics and backproject to 3D
             cam_calib_file = os.path.join(os.path.dirname(img_path),
                                           "../../../static_transformations",
-                                          which_camera + ".yaml")
+                                          camera + ".yaml")
             K = load_camera_calib(cam_calib_file)["camera_matrix"]
+
             h_xy = np.hstack((xyd_array[:, :2], np.ones(
                 (xyd_array.shape[0], 1))))
             d = xyd_array[:, 2]
@@ -367,76 +272,206 @@ def match_cone_arrays(cfg):
             scalars = d / np.linalg.norm(c_xyz_s.T, axis=1)
             c_xyz = (c_xyz_s * scalars).T
 
-            # 2) transform to ego frame
+            # Transform to egomotion coordinate frame
+            test_day = extract_test_day_from_path(gt_cone_array_path, cfg.data)
+
+            T_mrh_ego = get_T_mrh_to_ego(
+                os.path.join(cfg.data, test_day, "static_transformations"))
+
             T_camera_mrh = get_T_camera_to_mrh(
-                os.path.join(cfg.gt_base_folder, test_day,
-                             "static_transformations"), which_camera)
+                os.path.join(cfg.data, test_day, "static_transformations"),
+                camera)
 
             T_camera_ego = T_mrh_ego @ T_camera_mrh
 
             h_c_xyz = np.hstack((c_xyz, np.ones((c_xyz.shape[0], 1))))
             e_xyz = (T_camera_ego @ h_c_xyz.T).T[:, :3]
 
-            # 2.3) Concatenate cone arrays
-            sf_cone_array.append(e_xyz)
+            cone_arrays[camera] = np.hstack(
+                (e_xyz, cone_type[:, None], conf[:, None]))
 
-        cone_arrays_dict["sf"].append(sf_cone_array)
-        pbar.update(1)
-        counter += 1
+        return cone_arrays, bb_arrays, True
 
-    pbar.close()
+    #####################################################
+
+    cone_arrays_dict = {}
+
+    with open(cfg.pred, "rb") as f:
+        predictions = pickle.load(f)
+
+    img_paths = list(predictions.keys())
+
+    pbar = tqdm(total=len(img_paths), desc="Extracting cone arrays")
+    gt_cone_array_paths = []
+    counter = 0
+    for img_path in img_paths:
+        local_img_path = os.path.join(cfg.data, img_path.rstrip())
+        if os.path.exists(local_img_path):
+            gt_cone_array_path = local_img_path.replace(
+                'camera_filtered', 'cones_corrected').replace('png', 'bin')
+
+            # Filter out duplicates, meaning gt cone arrays that belong to the same timestamp, i.e.
+            # right/left/forward_cones_corrected/00000123.bin files contain the same gt cones only in different
+            # coordinate systems
+            if os.path.exists(gt_cone_array_path) and not duplicate_gt(
+                    gt_cone_array_path, gt_cone_array_paths):
+
+                sample = {}
+                sample["gt_cone_array"] = get_gt_cone_array(gt_cone_array_path)
+                sample["sf_cone_array"], sample[
+                    "sf_bb_array"], success = get_sf_cone_array(
+                        cfg.data, img_path, predictions)
+
+                if success:
+                    cone_arrays_dict[img_path] = sample
+
+            pbar.update(1)
+
+        else:
+            counter += 1
+
+    if counter:
+        print(
+            "{} specified img files don't exist on the local system. Data bases out of sync?"
+            .format(counter))
 
     # Cache cone arrays dict
-    with open("sf_cone_arrays_dict.pkl", "wb") as f:
+    with open("cone_arrays_dict.pkl", "wb") as f:
         pickle.dump(cone_arrays_dict, f)
 
     return cone_arrays_dict
 
 
 def visualize_cone_arrays(cfg):
+    """
+    Loading in the predicted 3D cone arrays, bounding boxes + depth and the
+    ground truth cone arrays for visualization of the cones in BEV and the bb 
+    in the images.
+    """
 
-    if cfg.new_data:
-        cone_arrays_dict = match_cone_arrays(cfg)
-    else:
+    # Loading of ground truth and predicted cone arrays + bounding boxes
+    if cfg.cached_data:
         try:
-            with open("sf_cone_arrays_dict.pkl", "rb") as f:
+            with open("cone_arrays_dict.pkl", "rb") as f:
                 cone_arrays_dict = pickle.load(f)
         except:
             print("No cache file")
             cone_arrays_dict = match_cone_arrays(cfg)
+    else:
+        cone_arrays_dict = match_cone_arrays(cfg)
 
-    num_cone_arrays = len(cone_arrays_dict["sf"])
+    # Generating visualizations
+    plt.style.use('seaborn')
 
-    for idx in range(num_cone_arrays):
-        gt_cone_array = o3d.geometry.PointCloud()
-        gt_cone_array.points = o3d.utility.Vector3dVector(
-            cone_arrays_dict["gt"][idx][:, 1:])
+    for index, (key, data_item) in enumerate(cone_arrays_dict.items()):
+        which_camera = extract_camera_from_path(key)
+        img_path = {}
+        img = {}
+        keys = {}
+        for camera in ["left", "right"]:
+            keys[camera] = key.replace(which_camera, camera)
+            img_path[camera] = os.path.join(cfg.data,
+                                            key.replace(which_camera, camera))
+            img[camera] = cv2.imread(img_path[camera])
 
-        tmp = np.zeros((0, 3))
-        for sf_cone_array_ in cone_arrays_dict["sf"][idx]:
-            tmp = np.vstack((tmp, sf_cone_array_))
-        cone_arrays_dict["sf"][idx] = tmp
+        gt_cone_array = data_item["gt_cone_array"]
+        sf_cone_array_left = data_item["sf_cone_array"]["left"]
+        sf_cone_array_right = data_item["sf_cone_array"]["right"]
+        sf_bb_array_left = data_item["sf_bb_array"]["left"]
+        sf_bb_array_right = data_item["sf_bb_array"]["right"]
 
-        # Vis
-        pcd_sf = o3d.geometry.PointCloud()
-        pcd_sf.points = o3d.utility.Vector3dVector(cone_arrays_dict["sf"][idx])
-        pcd_sf.paint_uniform_color([1.0, 0.1, 0.1])
+        # Create scatter plot, neglect z axis
+        fig1, (ax1_1) = plt.subplots(nrows=1, ncols=1)
 
-        pcd_gt = o3d.geometry.PointCloud()
-        # Project the gt cones onto the xy plane
-        gt_cone_array_projected = np.hstack(
-            (cone_arrays_dict["gt"][idx][:, 1:3],
-             np.zeros((cone_arrays_dict["gt"][idx].shape[0], 1))))
-        # Artificially make a point to have a z!=0 to counter the open3d visualization bug
-        gt_cone_array_projected[-1, -1] = 1
-        pcd_gt.points = o3d.utility.Vector3dVector(gt_cone_array_projected)
-        pcd_gt.paint_uniform_color([0.1, 0.9, 0.1])
+        # Manually place ticks
+        SPACING = 10.0
+        xmin = min([
+            np.min(gt_cone_array[:, 1]),
+            np.min(sf_cone_array_left[:, 0]),
+            np.min(sf_cone_array_right[:, 0])
+        ])
+        xmax = max([
+            np.max(gt_cone_array[:, 1]),
+            np.max(sf_cone_array_left[:, 0]),
+            np.max(sf_cone_array_right[:, 0])
+        ])
+        ymin = min([
+            np.min(gt_cone_array[:, 2]),
+            np.min(sf_cone_array_left[:, 1]),
+            np.min(sf_cone_array_right[:, 1])
+        ])
+        ymax = max([
+            np.max(gt_cone_array[:, 2]),
+            np.max(sf_cone_array_left[:, 1]),
+            np.max(sf_cone_array_right[:, 1])
+        ])
+        xticks = np.arange(np.floor(xmin / SPACING),
+                           np.ceil(xmax / SPACING) + 1) * SPACING
+        yticks = np.arange(np.floor(ymin / SPACING),
+                           np.ceil(ymax / SPACING) + 1) * SPACING
 
-        # Coordinate Frame
-        mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
-            size=0.6, origin=[0, 0, 0])
+        fig1.set_figheight(len(yticks))
+        fig1.set_figwidth(len(xticks))
 
-        o3d.visualization.draw_geometries([pcd_sf, pcd_gt, mesh_frame])
+        # Plot ground truth cones
+        gt_c = np.array([
+            np.array([0.0, 0.0, 0.0, 1.0])
+            if x == 0 else np.array([1.0, 1.0, 1.0, 1.0])
+            for x in gt_cone_array[:, 0]
+        ])
+        ax1_1.scatter(gt_cone_array[:, 1], gt_cone_array[:, 2], c=gt_c)
+
+        # Plot sf cone array left
+        sf_c_left = np.array([
+            np.array([0.0, 0.0, 1.0, 1.0])
+            if x == 0 else np.array([1.0, 1.0, 0.0, 1.0])
+            for x in sf_cone_array_left[:, 3]
+        ])
+        sf_c_left[:, 3] = sf_cone_array_left[:, 4]
+        ax1_1.scatter(sf_cone_array_left[:, 0],
+                      sf_cone_array_left[:, 1],
+                      c=sf_c_left,
+                      edgecolor="Black")
+
+        # Plot sf cone array right
+        sf_c_right = np.array([
+            np.array([0.0, 0.0, 1.0, 1.0])
+            if x == 0 else np.array([1.0, 1.0, 0.0, 1.0])
+            for x in sf_cone_array_right[:, 3]
+        ])
+        sf_c_right[:, 3] = sf_cone_array_right[:, 4]
+        ax1_1.scatter(sf_cone_array_right[:, 0],
+                      sf_cone_array_right[:, 1],
+                      c=sf_c_right,
+                      edgecolor="Black")
+
+        ax1_1.set_title("Birds Eye View")
+        ax1_1.set_xlabel("x/m")
+        ax1_1.set_ylabel("y/m")
+        ax1_1.set_xticks(xticks)
+        ax1_1.set_yticks(yticks)
+
+        plt.tight_layout()
+        plt.savefig(str(index).zfill(8))
+        plt.show()
+
+        # Create image plot
+        fig2, (ax2_1, ax2_2) = plt.subplots(nrows=1, ncols=2)
+        fig2.set_figheight(3)
+        fig2.set_figwidth(16)
+        ax2_1.imshow(np.flip(img["left"], axis=2))
+        ax2_1.set_title(keys["left"][keys["left"].find("data") + len("data") +
+                                     1:])
+        ax2_1.set_xticks([])
+        ax2_1.set_yticks([])
+        ax2_2.imshow(np.flip(img["right"], axis=2))
+        ax2_2.set_title(keys["right"][keys["right"].find("data") +
+                                      len("data") + 1:])
+        ax2_2.set_xticks([])
+        ax2_2.set_yticks([])
+        plt.tight_layout(w_pad=2)
+        plt.savefig(str(index).zfill(8))
+        plt.show()
 
     print("Done")
 
@@ -547,7 +582,7 @@ def main():
     elif cfg.mode == "metrics":
         calculate_metrics(cfg)
     else:
-        print("Moop")
+        print("Moop. Mode not implemented.")
 
 
 if __name__ == "__main__":
