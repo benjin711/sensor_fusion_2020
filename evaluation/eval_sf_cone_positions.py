@@ -4,8 +4,6 @@ import os
 import re
 import yaml
 import numpy as np
-# Need pickle5 to be able load pickle protocol 5
-# which is default in python 3.8
 import pickle5 as pickle
 import cv2
 import pathlib
@@ -16,6 +14,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import matplotlib.cm as cmx
 from copy import deepcopy
+from scipy.spatial import cKDTree
 
 
 def command_line_parser():
@@ -39,15 +38,12 @@ def command_line_parser():
                         action='store_true',
                         help='Use the cached data instead')
 
-    parser.add_argument(
-        '-m',
-        '--mode',
-        default='vis',
-        type=str,
-        choices=['vis', 'save_vis', 'metrics'],
-        help=
-        'Specify the mode of the program. Viz mode displays the predicted cones and ground truth cones in a BEV image. Metrics calculates the bar diagram quantifying the distance errors per distance range.'
-    )
+    parser.add_argument('-m',
+                        '--mode',
+                        default='vis',
+                        type=str,
+                        choices=['vis', 'save_vis', 'metrics'],
+                        help='Specify the mode of the program')
 
     parser.add_argument(
         '-md',
@@ -529,41 +525,38 @@ def calculate_metrics(cfg):
     avg_pos_error = [0.0] * num_bins
     num_predictions = [0] * num_bins
 
-    for idx in range(num_cone_arrays):
-        gt_cone_array = o3d.geometry.PointCloud()
-        gt_cone_array.points = o3d.utility.Vector3dVector(
-            cone_arrays_dict["gt"][idx][:, 1:])
-        gt_cone_array_tree = o3d.geometry.KDTreeFlann(gt_cone_array)
+    # Iterate over the data items of every timestamp
+    # For every predicted cond find its corresponding ground truth cone
+    # and store the distance error
+    for key, data_item in cone_arrays_dict.items():
+        gt_cone_array = data_item["gt_cone_array"]
+        sf_cone_array_left = data_item["sf_cone_array"]["left"]
+        sf_cone_array_right = data_item["sf_cone_array"]["right"]
+        sf_cone_array = np.vstack((sf_cone_array_left, sf_cone_array_right))
 
-        tmp = np.zeros((0, 3))
-        for sf_cone_array_ in cone_arrays_dict["sf"][idx]:
-            tmp = np.vstack((tmp, sf_cone_array_))
-        cone_arrays_dict["sf"][idx] = tmp
+        gt_cone_tree = cKDTree(gt_cone_array[:, 1:])
 
-        for sf_cone in cone_arrays_dict["sf"][idx]:
-
-            [k, idx_nn,
-             _] = gt_cone_array_tree.search_knn_vector_3d(sf_cone, 1)
-            [k_, idx_ball, _] = gt_cone_array_tree.search_radius_vector_3d(
-                sf_cone, MAX_DIST_PREDICTED_TO_GT_CONE)
-
-            if idx_nn[0] in idx_ball:
-                gt_cone = cone_arrays_dict["gt"][idx][idx_nn[0], 1:]
+        for sf_cone in sf_cone_array[:, :3]:
+            dd, ii = gt_cone_tree.query(sf_cone, distance_upper_bound=2)
+            if ii != gt_cone_tree.n:
+                gt_cone = gt_cone_array[ii]
                 dist_gt_origin = np.linalg.norm(gt_cone)
+
                 if dist_gt_origin >= cfg.max_distance:
                     continue
+
                 dist_gt_origin_array_idx = int(dist_gt_origin /
                                                cfg.interval_length)
-                dist_gt_sf = np.linalg.norm(gt_cone - sf_cone)
+                pos_error[dist_gt_origin_array_idx].append(dd)
 
-                pos_error[dist_gt_origin_array_idx].append(dist_gt_sf)
-
+    # Calculate metrics
     for idx in range(num_bins):
         if pos_error[idx]:
             avg_pos_error[idx] = sum(pos_error[idx]) / len(pos_error[idx])
             std_pos_error[idx] = float(np.std(np.array(pos_error[idx])))
             num_predictions[idx] = len(pos_error[idx])
 
+    # Visualize metrics
     plt.style.use("seaborn")
     dist_ranges = np.linspace(0, cfg.max_distance,
                               int(cfg.max_distance / cfg.interval_length +
