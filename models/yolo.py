@@ -94,7 +94,7 @@ class Model(nn.Module):
         m = self.model[-1]  # Detect()
 
         # Initial convs
-        self.conv_rgb = nn.Conv2d(4, 16, 3, padding=1)
+        self.conv_rgb = nn.Conv2d(3, 16, 3)
         self.conv_dm = nn.Conv2d(2, 16, 3)
         #self.conv_dm = SparseConv(1, 16)
 
