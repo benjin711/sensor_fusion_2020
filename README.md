@@ -15,11 +15,13 @@ described in [this paper](https://arxiv.org/abs/2004.10934).
 Forked on 2020/10/28.
 
 ## Usage
-Python Version 3.8 is being used. On leonhard, use the command ```module load gcc/6.3.0 python_gpu/3.8.5```, you could add this to your .bashrc file. Locally, I have been using pipenv virtual environments, but they don't seem to work on leonhard. Files are formatted using yapf (at least the ones that I modified). 
+Python Version 3.8 has been used on leonhard. On leonhard, use the command ```module load gcc/6.3.0 python_gpu/3.8.5```. Locally, I have been using pipenv virtual environments with python version 3.6, but pipenv doesn't seem to work well on leonhard. On leonhard I just installed all necessary dependencies globally. Pipfiles can be found in the repo. Files are formatted using yapf (at least the ones that I modified). 
 
-Models are in the perception folder on gdrive as well as the NAS in pilatus-2021/sensor_fusion_model_weights and need to be downloaded e.g. into the weights folder. Inference can be run by using the test.py script on leonhard or locally, e.g.:
+Models are in the perception folder on gdrive as well as the NAS in pilatus-2021/sensor_fusion_model_weights and need to be downloaded e.g. into the weights folder. The perception folder on the gdrive also contains a thorough evaluation of the model. Inference can be run by using the test.py script on leonhard or locally. Set the path to the model weights accordingly, then run e.g.:
 ```
-bsub -W 4:00 -n 20 -R "rusage[mem=4500, ngpus_excl_p=1]" python test.py --batch-size 1 --img-size 1280 --iou-thres 0.3 --conf-thres 0.01 --task test --merge --generate-depth-stats --device 0
-python test.py --save-bin
+bsub -W 4:00 -n 20 -R "rusage[mem=4500, ngpus_excl_p=1]" python test.py --data data/amz_data_splits.yaml --weights weights/best_exp06.pt --batch-size 1 --img-size 1280 --iou-thres 0.3 --conf-thres 0.01 --task test --merge --generate-depth-stats --device 0 --save-pkl
+python test.py --data data/amz_data_splits.yaml --weights weights/best_exp06.pt --save-pkl
 
 ```
+
+For information on the evaluation scripts refer to the the README.md in the evaluation folder.
