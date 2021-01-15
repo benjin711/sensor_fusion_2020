@@ -84,7 +84,7 @@ def train(hyp, tb_writer, opt, device):
             os.remove(f)
 
     # Create model
-    model = Model(opt.cfg, ch=6, nc=nc).to(device)
+    model = Model(opt.cfg, ch=5, nc=nc).to(device)
 
     # Image sizes
     gs = int(max(model.stride))  # grid size (max stride)
@@ -339,9 +339,7 @@ def train(hyp, tb_writer, opt, device):
             if rgb_drop:
                 rgbs = torch.zeros(b, 4, w, h).to(imgs.device)
             else:
-                rgbs = torch.cat((imgs[:, :3, :, :], torch.ones(b, 1, w, h).to(
-                    imgs.device)),
-                                 dim=1)
+                rgbs = imgs[:, :3, ::]
             imgs = torch.cat((rgbs, imgs[:, 3:, ::]), dim=1)
 
             # Warmup
@@ -451,13 +449,12 @@ def train(hyp, tb_writer, opt, device):
                     opt.data,
                     batch_size=total_batch_size,
                     imgsz=imgsz_test,
-                    save_json=final_epoch
-                    and opt.data.endswith(os.sep + 'coco.yaml'),
                     model=ema.ema.module
                     if hasattr(ema.ema, 'module') else ema.ema,
                     single_cls=opt.single_cls,
                     dataloader=testloader,
-                    save_dir=log_dir)
+                    save_dir=log_dir,
+                    rgb_drop=opt.rgb_drop)
 
                 # Write
                 with open(results_file, 'a') as f:
@@ -570,7 +567,7 @@ if __name__ == '__main__':
                         nargs='+',
                         type=int,
                         default=[1280, 1280],
-                        help='train,test sizes')
+                        help='train,val,test sizes')
     parser.add_argument('--rect',
                         action='store_true',
                         help='rectangular training')
