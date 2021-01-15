@@ -37,8 +37,8 @@ hyp = {
 
 def test(
         data,
-        conf_thres,
-        iou_thres,
+        conf_thres=0.01,
+        iou_thres=0.03,
         weights=None,
         batch_size=16,
         imgsz=640,  # for NMS
@@ -49,9 +49,10 @@ def test(
         dataloader=None,
         save_dir='',
         merge=False,
-        save_pkl=True,
+        save_pkl=False,
         generate_depth_stats=False,
-        stride=32):
+        stride=32,
+        rgb_drop=False):
     # Initialize/load model and set device
     training = model is not None
     if training:  # called by train.py
@@ -135,7 +136,7 @@ def test(
         whwh = torch.Tensor([width, height, width, height]).to(device)
         total_boxes += targets.shape[0]
 
-        if opt.rgb_drop:
+        if rgb_drop:
             img[:, :3, :, :] *= torch.randint(0, 2,
                                               size=(1, )).to(device,
                                                              non_blocking=True)
@@ -346,73 +347,73 @@ def test(
     # mdeptherror
     # Image height, width
     # Inference speed at batch size
+    if not training:
+        metrics = {
+            "Num Layers":
+            model_info[0],
+            "Num Parameters":
+            model_info[1],
+            "Num Gradients":
+            model_info[2],
+            "Yellow Class ID":
+            names.index('yellow'),
+            "Blue Class ID":
+            names.index('blue'),
+            "Num Blue Targets":
+            int(nt[names.index('blue')]),
+            "Num Yellow Targets":
+            int(nt[names.index('yellow')]),
+            "Num Targets Total":
+            int(sum(nt)),
+            "Yellow Precision":
+            float(p[names.index('yellow')]),
+            "Blue Precision":
+            float(p[names.index('blue')]),
+            "Mean Precision":
+            float(p.mean()),
+            "Yellow Recall":
+            float(r[names.index('yellow')]),
+            "Blue Recall":
+            float(r[names.index('blue')]),
+            "Mean Recall":
+            float(r.mean()),
+            "Yellow AP50":
+            float(ap50[names.index('yellow')]),
+            "Yellow AP75":
+            float(ap75[names.index('yellow')]),
+            "Yellow AP50:95":
+            float(ap[names.index('yellow')]),
+            "Blue AP50":
+            float(ap50[names.index('blue')]),
+            "Blue AP75":
+            float(ap75[names.index('blue')]),
+            "Blue AP50:95":
+            float(ap[names.index('blue')]),
+            "mAP50":
+            float(ap50.mean()),
+            "mAP75":
+            float(ap75.mean()),
+            "mAP50:95":
+            float(ap.mean()),
+            "Mean Depth Error in m":
+            float(np.mean(np.array(depth_stats['depth_error']))),
+            "Image Height":
+            height,
+            "Image Width":
+            width,
+            "Model Inference Speed in ms per Image":
+            t[0],
+            "NMS and Filtering Speed in ms per Image":
+            t[1],
+            "Total Inference Speed in ms per Image":
+            t[2],
+            "Batch Size":
+            batch_size
+        }
 
-    metrics = {
-        "Num Layers":
-        model_info[0],
-        "Num Parameters":
-        model_info[1],
-        "Num Gradients":
-        model_info[2],
-        "Yellow Class ID":
-        names.index('yellow'),
-        "Blue Class ID":
-        names.index('blue'),
-        "Num Blue Targets":
-        int(nt[names.index('blue')]),
-        "Num Yellow Targets":
-        int(nt[names.index('yellow')]),
-        "Num Targets Total":
-        int(sum(nt)),
-        "Yellow Precision":
-        float(p[names.index('yellow')]),
-        "Blue Precision":
-        float(p[names.index('blue')]),
-        "Mean Precision":
-        float(p.mean()),
-        "Yellow Recall":
-        float(r[names.index('yellow')]),
-        "Blue Recall":
-        float(r[names.index('blue')]),
-        "Mean Recall":
-        float(r.mean()),
-        "Yellow AP50":
-        float(ap50[names.index('yellow')]),
-        "Yellow AP75":
-        float(ap75[names.index('yellow')]),
-        "Yellow AP50:95":
-        float(ap[names.index('yellow')]),
-        "Blue AP50":
-        float(ap50[names.index('blue')]),
-        "Blue AP75":
-        float(ap75[names.index('blue')]),
-        "Blue AP50:95":
-        float(ap[names.index('blue')]),
-        "mAP50":
-        float(ap50.mean()),
-        "mAP75":
-        float(ap75.mean()),
-        "mAP50:95":
-        float(ap.mean()),
-        "Mean Depth Error in m":
-        float(np.mean(np.array(depth_stats['depth_error']))),
-        "Image Height":
-        height,
-        "Image Width":
-        width,
-        "Model Inference Speed in ms per Image":
-        t[0],
-        "NMS and Filtering Speed in ms per Image":
-        t[1],
-        "Total Inference Speed in ms per Image":
-        t[2],
-        "Batch Size":
-        batch_size
-    }
-
-    with open("metrics.yaml", 'w') as f:
-        f.write('# Model Info & Evaluation Metrics: \n\n')
-        yaml.dump(metrics, f, sort_keys=False)
+        with open("metrics.yaml", 'w') as f:
+            f.write('# Model Info & Evaluation Metrics: \n\n')
+            yaml.dump(metrics, f, sort_keys=False)
 
     return (mp, mr, map50, map, np.mean(np.array(depth_stats['depth_error'])),
             *(loss.cpu() / len(dataloader)).tolist()), maps, t, (gt_result,
@@ -486,7 +487,8 @@ if __name__ == '__main__':
                    single_cls=opt.single_cls,
                    augment=opt.augment,
                    verbose=opt.verbose,
-                   generate_depth_stats=opt.generate_depth_stats)
+                   generate_depth_stats=opt.generate_depth_stats,
+                   rgb_drop=opt.rgb_drop)
 
     elif opt.task == 'study':  # run over a range of settings and save/plot
         for weights in [
