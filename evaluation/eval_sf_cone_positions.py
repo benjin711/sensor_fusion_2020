@@ -7,12 +7,9 @@ import numpy as np
 import pickle5 as pickle
 import cv2
 import pathlib
-import open3d as o3d
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-import matplotlib.colors as colors
-import matplotlib.cm as cmx
 from copy import deepcopy
 from scipy.spatial import cKDTree
 
