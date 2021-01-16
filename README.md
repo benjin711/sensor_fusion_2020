@@ -17,7 +17,15 @@ Forked on 2020/10/28.
 ## Usage general 
 Please make a fork of the repo, then you are free to start building on this code base. 
 
-Python Version 3.8 has been used on leonhard. On leonhard, use the command ```module load gcc/6.3.0 python_gpu/3.8.5```. Locally, I have been using pipenv virtual environments with python version 3.6, but pipenv doesn't seem to work well on leonhard. On leonhard I just installed all necessary dependencies globally. Pipfiles can be found in the repo. Files are formatted using yapf (at least the ones that I modified). 
+Python Version 3.8 has been used on leonhard. On leonhard, use the command ```module load gcc/6.3.0 python_gpu/3.8.5```. Locally, I have been using pipenv virtual environments with python version 3.6, but pipenv doesn't seem to work well on leonhard. On leonhard I just installed all necessary dependencies globally. Pipfiles can be found in the repo. Files are formatted using yapf (at least the ones that I modified). Here are some basic pipenv related commands:
+```
+pip3 install pipenv
+
+```
+In the repo sensor_fusion_2020, run the following command to install all necessary dependencies:
+```
+pipenv install
+```
 
 Models are in the perception folder on gdrive as well as the NAS in pilatus-2021/sensor_fusion_model_weights and need to be downloaded e.g. into the weights folder. The perception folder on the gdrive also contains a thorough evaluation of the model. 
 
