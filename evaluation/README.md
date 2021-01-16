@@ -8,4 +8,8 @@ The test.py file provides the inference data in an inference.pkl file. The eval_
 python eval_sf_cone_positions.py -h
 ```
 
-## As predicted form the lidar pipeline
+## As predicted from the lidar pipeline
+The rosbag_extractor.py and data_preprocessor.py scripts can extract the lidar cone array predictions and match them to the reference timestamps of the images. Hence it's possible to compare these lidar cone arrays, which can be found in the lidar_cone_arrays_filtered folder, with the ground truth cone arrays. The eval_lidar_cone_positions.py script visualizes lidar pipeline predictions together with the ground truth cone arrays in the BEV perspective and also calcualtes the average distance error bar diagram. 
+```
+python eval_lidar_cone_positions.py -h
+```
