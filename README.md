@@ -13,3 +13,41 @@ The model implementation is based on
 described in [this paper](https://arxiv.org/abs/2004.10934).
 
 Forked on 2020/10/28.
+
+## Usage general 
+Please make a fork of the repo, then you are free to start building on this code base. 
+
+Python Version 3.8 has been used on leonhard. On leonhard, use the command ```module load gcc/6.3.0 python_gpu/3.8.5```. Locally, I have been using pipenv virtual environments with python version 3.6, but pipenv doesn't seem to work well on leonhard. On leonhard I just installed all necessary dependencies globally. Pipfiles can be found in the repo. Files are formatted using yapf (at least the ones that I modified). Here are some basic pipenv related commands:
+```
+pip3 install pipenv
+
+```
+In the repo sensor_fusion_2020, run the following command to install all necessary dependencies:
+```
+pipenv install
+```
+
+Models are in the perception folder on gdrive as well as the NAS in pilatus-2021/sensor_fusion_model_weights and need to be downloaded e.g. into the weights folder. The perception folder on the gdrive also contains a thorough evaluation of the model. 
+
+The files in data/full and the amz_data_splits.yaml files are configuration files that depend on the machine and often need to be changed. With this command:
+```
+git update-index --skip-worktree <file-list>
+```
+it is possible to keep an initial version in your git whilst configuration changes will not be tracked and commited anymore. 
+https://compiledsuccessfully.dev/git-skip-worktree/
+## Usage test.py
+Inference can be run by using the test.py script on leonhard or locally. Set the path to the model weights accordingly. Set the path to the yaml file that specifies the data split accordingly (data/amz_data_splits.yaml) and make sure that the paths in data/full/* are correct for your machine. Then run e.g.:
+```
+bsub -W 4:00 -n 20 -R "rusage[mem=4500, ngpus_excl_p=1]" python test.py --data data/amz_data_splits.yaml --weights weights/best_exp06.pt --batch-size 1 --img-size 1280 --iou-thres 0.3 --conf-thres 0.01 --task test --merge --generate-depth-stats --device 0 --save-pkl
+python test.py --data data/amz_data_splits.yaml --weights weights/best_exp06.pt --save-pkl
+
+```
+## Usage train.py
+Training can be started locally and on leonhard.
+```
+bsub -W 4:00 -n 20 -R "rusage[mem=4500,ngpus_excl_p=8]" python train.py --batch-size 32 --data data/amz_data_splits.yaml --noautoanchor --cfg dels/yolov4m-rgbd.yaml --rect
+python train.py --batch-size 2 --data data/amz_data_splits.yaml --noautoanchor --cfg models/yolov4m-rgbd.yaml --rect --epochs 1
+```
+
+## Usage evaluation scripts
+For information on the evaluation scripts refer to the the README.md in the evaluation folder.

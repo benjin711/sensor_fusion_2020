@@ -963,8 +963,7 @@ class DataPreprocesser:
             file_path = os.path.join(dst_folder, str(idx).zfill(8) + ".bin")
 
             if lidar_cone_array.size == 0:
-                with open(file_path, 'w'):
-                    pass
+                pass
             else:
                 lidar_cone_array.tofile(file_path)
 

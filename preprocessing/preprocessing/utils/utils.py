@@ -178,6 +178,20 @@ def load_rosparam_mat(yaml_dict, param_name):
     return np.asarray(data).reshape((rows, cols))
 
 
+def load_mrh_transform(yaml_path, invert=False):
+    s = cv2.FileStorage(yaml_path, cv2.FileStorage_READ)
+    R = s.getNode("R_mtx").mat()
+    t = s.getNode("t_mtx").mat()
+    T = np.eye(4)
+    T[:3, :3] = R
+    T[:3, 3] = t.reshape((3, ))
+    if invert:
+        T = np.linalg.inv(T)
+
+    return T
+
+
+
 def load_stereo_calib(camera_fn, stereo_fn):
 
     if not os.path.exists(camera_fn) or not os.path.exists(stereo_fn):
