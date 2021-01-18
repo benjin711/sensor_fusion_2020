@@ -48,6 +48,10 @@ Training can be started locally and on leonhard.
 bsub -W 4:00 -n 20 -R "rusage[mem=4500,ngpus_excl_p=8]" python train.py --batch-size 32 --data data/amz_data_splits.yaml --noautoanchor --cfg dels/yolov4m-rgbd.yaml --rect
 python train.py --batch-size 2 --data data/amz_data_splits.yaml --noautoanchor --cfg models/yolov4m-rgbd.yaml --rect --epochs 1
 ```
+Check the progress using tensorboard:
+```
+tensorboard --logdir <runs or specific experiment directory>
+```
 
 ## Usage evaluation scripts
 For information on the evaluation scripts refer to the the README.md in the evaluation folder.
