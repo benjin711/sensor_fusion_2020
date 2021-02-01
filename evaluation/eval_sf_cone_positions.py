@@ -12,6 +12,8 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from copy import deepcopy
 from scipy.spatial import cKDTree
+from matplotlib.lines import Line2D
+import matplotlib as mpl
 
 
 def command_line_parser():
@@ -56,6 +58,10 @@ def command_line_parser():
                         default=3,
                         type=int,
                         help='Interval length for grouping predicted cones.')
+
+    parser.add_argument('--bb_depth',
+                        action='store_true',
+                        help='Calculate depth based on bounding box size')
 
     cfg = parser.parse_args()
 
@@ -199,7 +205,7 @@ def match_cone_arrays(cfg):
 
         return gt_cone_array
 
-    def get_sf_cone_array(data_folder, key, predictions):
+    def get_sf_cone_array(data_folder, key, predictions, bb_depth=False):
         """
         Parameter: 
         - data_folder: path of the data folder (sensor_fusion_data)
@@ -254,12 +260,22 @@ def match_cone_arrays(cfg):
             ]).T
             bb_arrays[camera] = xyxydc_array
 
-            # Load camera intrinsics and backproject to 3D
+            # Load camera intrinsics
             cam_calib_file = os.path.join(os.path.dirname(img_path),
                                           "../../../static_transformations",
                                           camera + ".yaml")
             K = load_camera_calib(cam_calib_file)["camera_matrix"]
 
+            # Recalculate depth based on bb size instead of network predicted depth
+            if bb_depth:
+                CONE_HEIGHT = 0.325
+                Z = K[1, 1] / xywh_array[:, 3] * CONE_HEIGHT
+                X = np.abs(xywh_array[:, 0] - 0.5 * w) / K[0, 0] * Z
+                Y = np.abs(xywh_array[:, 1] - 0.5 * h) / K[1, 1] * Z
+                d = np.sqrt(np.square(X) + np.square(Y) + np.square(Z))
+                xyd_array[:, 2] = d
+
+            # Backproject to 3D
             h_xy = np.hstack((xyd_array[:, :2], np.ones(
                 (xyd_array.shape[0], 1))))
             d = xyd_array[:, 2]
@@ -315,7 +331,7 @@ def match_cone_arrays(cfg):
                 sample["gt_cone_array"] = get_gt_cone_array(gt_cone_array_path)
                 sample["sf_cone_array"], sample[
                     "sf_bb_array"], success = get_sf_cone_array(
-                        cfg.data, img_path, predictions)
+                        cfg.data, img_path, predictions, cfg.bb_depth)
 
                 if success:
                     cone_arrays_dict[img_path] = sample
@@ -331,7 +347,7 @@ def match_cone_arrays(cfg):
             .format(counter))
 
     # Cache cone arrays dict
-    with open("cone_arrays_dict.pkl", "wb") as f:
+    with open("sf_cone_arrays_dict.pkl", "wb") as f:
         pickle.dump(cone_arrays_dict, f)
 
     return cone_arrays_dict
@@ -347,7 +363,7 @@ def visualize_cone_arrays(cfg):
     # Loading of ground truth and predicted cone arrays + bounding boxes
     if cfg.cached_data:
         try:
-            with open("cone_arrays_dict.pkl", "rb") as f:
+            with open("sf_cone_arrays_dict.pkl", "rb") as f:
                 cone_arrays_dict = pickle.load(f)
         except:
             print("No cache file")
@@ -400,8 +416,10 @@ def visualize_cone_arrays(cfg):
             np.max(sf_cone_array_left[:, 1]),
             np.max(sf_cone_array_right[:, 1])
         ])
-        xticks = np.arange(np.floor(xmin / SPACING),
-                           np.ceil(xmax / SPACING) + 1) * SPACING
+        xticks = np.arange(
+            np.floor(xmin / SPACING),
+            np.ceil(xmax / SPACING) + 1 +
+            1) * SPACING  # Second + 1 is to have extra space for the legend
         yticks = np.arange(np.floor(ymin / SPACING),
                            np.ceil(ymax / SPACING) + 1) * SPACING
 
@@ -440,11 +458,35 @@ def visualize_cone_arrays(cfg):
                       c=sf_c_right,
                       edgecolor="Black")
 
-        ax1_1.set_title("Birds Eye View")
+        # Find index at which to split the lidar cone array path
+        KEYWORD = "data"
+        i = key.find(KEYWORD)
+        i += len(KEYWORD) + 1
+
+        ax1_1.set_title("BEV: " +
+                        key[i:].replace("right_camera_filtered", "...").
+                        replace("left_camera_filtered", "..."))
         ax1_1.set_xlabel("x/m")
         ax1_1.set_ylabel("y/m")
         ax1_1.set_xticks(xticks)
         ax1_1.set_yticks(yticks)
+
+        # Create legend manually
+        colors = ['black', 'blue', 'yellow', 'white']
+        circles = [
+            Line2D([0], [0],
+                   color=mpl.rcParams["axes.facecolor"],
+                   marker='o',
+                   markerfacecolor=c,
+                   markeredgecolor=c) for c in colors
+        ]
+        labels = [
+            'GT Blue Cone',
+            'YOLO3D Blue Cone',
+            'YOLO3D Yellow Cone',
+            'GT Yellow Cone',
+        ]
+        ax1_1.legend(circles, labels)
 
         plt.tight_layout()
         if cfg.mode == "save_vis":
@@ -457,7 +499,7 @@ def visualize_cone_arrays(cfg):
         fig2.set_figheight(3)
         fig2.set_figwidth(16)
 
-        # Plot left image iwth bounding boxes
+        # Plot left image with bounding boxes
         img_l = cv2.cvtColor(img["left"], cv2.COLOR_BGR2RGB)
         img_l = deepcopy(img_l)
         for xyxydc in sf_bb_array_left:
@@ -472,7 +514,7 @@ def visualize_cone_arrays(cfg):
         ax2_1.set_xticks([])
         ax2_1.set_yticks([])
 
-        # Plot right image iwth bounding boxes
+        # Plot right image with bounding boxes
         img_r = cv2.cvtColor(img["right"], cv2.COLOR_BGR2RGB)
         img_r = deepcopy(img_r)
         for xyxydc in sf_bb_array_right:
@@ -504,7 +546,7 @@ def calculate_metrics(cfg):
     # Loading of ground truth and predicted cone arrays + bounding boxes
     if cfg.cached_data:
         try:
-            with open("cone_arrays_dict.pkl", "rb") as f:
+            with open("sf_cone_arrays_dict.pkl", "rb") as f:
                 cone_arrays_dict = pickle.load(f)
         except:
             print("No cache file")
