@@ -9,8 +9,10 @@ import cv2
 import pathlib
 import open3d as o3d
 from matplotlib import pyplot as plt
+from matplotlib.lines import Line2D
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 from copy import deepcopy
 from scipy.spatial import cKDTree
 
@@ -285,7 +287,7 @@ def match_cone_arrays(cfg):
             .format(counter_3))
 
     # Cache cone arrays dict
-    with open("cone_arrays_dict.pkl", "wb") as f:
+    with open("lidar_cone_arrays_dict.pkl", "wb") as f:
         pickle.dump(cone_arrays_dict, f)
 
     return cone_arrays_dict
@@ -300,7 +302,7 @@ def visualize_cone_arrays(cfg):
     # Loading of ground truth and predicted cone arrays + bounding boxes
     if cfg.cached_data:
         try:
-            with open("cone_arrays_dict.pkl", "rb") as f:
+            with open("lidar_cone_arrays_dict.pkl", "rb") as f:
                 cone_arrays_dict = pickle.load(f)
         except:
             print("No cache file")
@@ -337,8 +339,10 @@ def visualize_cone_arrays(cfg):
             np.max(gt_cone_array[:, 2]),
             np.max(lidar_cone_array[:, 1]),
         ])
-        xticks = np.arange(np.floor(xmin / SPACING),
-                           np.ceil(xmax / SPACING) + 1) * SPACING
+        xticks = np.arange(
+            np.floor(xmin / SPACING),
+            np.ceil(xmax / SPACING) + 1 +
+            1) * SPACING  # Second + 1 is to have extra space for the legend
         yticks = np.arange(np.floor(ymin / SPACING),
                            np.ceil(ymax / SPACING) + 1) * SPACING
 
@@ -351,13 +355,26 @@ def visualize_cone_arrays(cfg):
             if x == 0 else np.array([1.0, 1.0, 1.0, 1.0])
             for x in gt_cone_array[:, 0]
         ])
+        gt_label = gt_c[:, 0]
         ax1_1.scatter(gt_cone_array[:, 1], gt_cone_array[:, 2], c=gt_c)
 
         # Plot lidar cone array
-        ax1_1.scatter(lidar_cone_array[:, 0],
-                      lidar_cone_array[:, 1],
-                      c="Gray",
-                      edgecolor="Black")
+        scatter = ax1_1.scatter(lidar_cone_array[:, 0],
+                                lidar_cone_array[:, 1],
+                                c="Gray",
+                                edgecolor="Black")
+
+        # Create legend manually
+        colors = ['black', 'grey', 'white']
+        circles = [
+            Line2D([0], [0],
+                   color=mpl.rcParams["axes.facecolor"],
+                   marker='o',
+                   markerfacecolor=c,
+                   markeredgecolor=c) for c in colors
+        ]
+        labels = ['GT Blue Cone', 'LiDAR Cone', 'GT Yellow Cone']
+        ax1_1.legend(circles, labels)
 
         # Find index at which to split the lidar cone array path
         KEYWORD = "data"
@@ -389,7 +406,7 @@ def calculate_metrics(cfg):
     # Loading of ground truth and predicted cone arrays + bounding boxes
     if cfg.cached_data:
         try:
-            with open("cone_arrays_dict.pkl", "rb") as f:
+            with open("lidar_cone_arrays_dict.pkl", "rb") as f:
                 cone_arrays_dict = pickle.load(f)
         except:
             print("No cache file")
