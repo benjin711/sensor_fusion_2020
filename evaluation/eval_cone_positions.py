@@ -16,6 +16,8 @@ import matplotlib as mpl
 from copy import deepcopy
 from scipy.spatial import cKDTree
 
+pipeline_label_dict = {"lidar": "LiDAR", "lm": "Local Map"}
+
 
 def command_line_parser():
     parser = argparse.ArgumentParser(
@@ -27,6 +29,16 @@ def command_line_parser():
         default='/media/benjin/Samsung_T5/AMZ/sf_project/sensor_fusion_data',
         type=str,
         help='Specify local path of the sensor_fusion_data folder')
+
+    parser.add_argument(
+        '-p',
+        '--pipeline',
+        default='lidar',
+        choices=['lidar', 'lm'],
+        type=str,
+        help=
+        'Specify which pipeline should be evaluated. Needed to specify the data source folder.'
+    )
 
     parser.add_argument(
         '-l',
@@ -58,7 +70,7 @@ def command_line_parser():
 
     parser.add_argument('-i',
                         '--interval_length',
-                        default=3,
+                        default=4,
                         type=int,
                         help='Interval length for grouping predicted cones.')
 
@@ -203,21 +215,22 @@ def match_cone_arrays(cfg):
 
         return gt_cone_array
 
-    def get_lidar_cone_array_path(gt_cone_array_path):
+    def get_cone_array_path(gt_cone_array_path, pipeline):
         cameras = ["left", "right", "forward"]
         for camera in cameras:
             gt_cone_array_path = gt_cone_array_path.replace(
-                camera + "_cones_corrected", "lidar_cone_arrays_filtered")
+                camera + "_cones_corrected",
+                "{}_cone_arrays_filtered".format(pipeline))
 
-        lidar_cone_array_path = gt_cone_array_path
+        cone_array_path = gt_cone_array_path
 
-        if os.path.exists(lidar_cone_array_path):
-            return lidar_cone_array_path
+        if os.path.exists(cone_array_path):
+            return cone_array_path
         else:
             return None
 
-    def get_lidar_cone_array(lidar_cone_array_path):
-        return np.fromfile(lidar_cone_array_path).reshape(-1, 3)
+    def get_cone_array(cone_array_path):
+        return np.fromfile(cone_array_path).reshape(-1, 3)
 
     #####################################################
 
@@ -235,7 +248,7 @@ def match_cone_arrays(cfg):
     pbar = tqdm(total=len(orig_label_paths), desc="Extracting cone arrays")
 
     gt_cone_array_paths = []
-    lidar_cone_array_paths = []
+    cone_array_paths = []
     counter_1, counter_2, counter_3 = 0, 0, 0
     for label_path in orig_label_paths:
         label_path = os.path.join(cfg.data, label_path[index:].rstrip())
@@ -249,20 +262,19 @@ def match_cone_arrays(cfg):
                     gt_cone_array_path, gt_cone_array_paths):
                 # - [ ]  Filter out duplicates, meaning gt cone arrays that belong to the same timestamp
                 # - [ ]  For each gt_cone_array, find the corresponding lidar file path, skip if not found
-                lidar_cone_array_path = get_lidar_cone_array_path(
-                    gt_cone_array_path)
-                if lidar_cone_array_path is not None:
+                cone_array_path = get_cone_array_path(gt_cone_array_path,
+                                                      cfg.pipeline)
+                if cone_array_path is not None:
 
                     # Find index at which to split the lidar cone array path
                     KEYWORD = "data"
-                    index = lidar_cone_array_path.find(KEYWORD)
+                    index = cone_array_path.find(KEYWORD)
                     index += len(KEYWORD) + 1
 
                     sample = {}
                     sample["gt"] = get_gt_cone_array(gt_cone_array_path)
-                    sample["lidar"] = get_lidar_cone_array(
-                        lidar_cone_array_path)
-                    cone_arrays_dict[lidar_cone_array_path[index:]] = sample
+                    sample[cfg.pipeline] = get_cone_array(cone_array_path)
+                    cone_arrays_dict[cone_array_path[index:]] = sample
 
                 else:
                     counter_3 += 1
@@ -287,7 +299,7 @@ def match_cone_arrays(cfg):
             .format(counter_3))
 
     # Cache cone arrays dict
-    with open("lidar_cone_arrays_dict.pkl", "wb") as f:
+    with open("{}_cone_arrays_dict.pkl".format(cfg.pipeline), "wb") as f:
         pickle.dump(cone_arrays_dict, f)
 
     return cone_arrays_dict
@@ -302,7 +314,8 @@ def visualize_cone_arrays(cfg):
     # Loading of ground truth and predicted cone arrays + bounding boxes
     if cfg.cached_data:
         try:
-            with open("lidar_cone_arrays_dict.pkl", "rb") as f:
+            with open("{}_cone_arrays_dict.pkl".format(cfg.pipeline),
+                      "rb") as f:
                 cone_arrays_dict = pickle.load(f)
         except:
             print("No cache file")
@@ -316,7 +329,7 @@ def visualize_cone_arrays(cfg):
     for index, (key, data_item) in enumerate(cone_arrays_dict.items()):
 
         gt_cone_array = data_item["gt"]
-        lidar_cone_array = data_item["lidar"]
+        cone_array = data_item[cfg.pipeline]
 
         # Create scatter plot, neglect z axis
         fig1, (ax1_1) = plt.subplots(nrows=1, ncols=1)
@@ -325,19 +338,19 @@ def visualize_cone_arrays(cfg):
         SPACING = 10.0
         xmin = min([
             np.min(gt_cone_array[:, 1]),
-            np.min(lidar_cone_array[:, 0]),
+            np.min(cone_array[:, 0]),
         ])
         xmax = max([
             np.max(gt_cone_array[:, 1]),
-            np.max(lidar_cone_array[:, 0]),
+            np.max(cone_array[:, 0]),
         ])
         ymin = min([
             np.min(gt_cone_array[:, 2]),
-            np.min(lidar_cone_array[:, 1]),
+            np.min(cone_array[:, 1]),
         ])
         ymax = max([
             np.max(gt_cone_array[:, 2]),
-            np.max(lidar_cone_array[:, 1]),
+            np.max(cone_array[:, 1]),
         ])
         xticks = np.arange(
             np.floor(xmin / SPACING),
@@ -359,8 +372,8 @@ def visualize_cone_arrays(cfg):
         ax1_1.scatter(gt_cone_array[:, 1], gt_cone_array[:, 2], c=gt_c)
 
         # Plot lidar cone array
-        scatter = ax1_1.scatter(lidar_cone_array[:, 0],
-                                lidar_cone_array[:, 1],
+        scatter = ax1_1.scatter(cone_array[:, 0],
+                                cone_array[:, 1],
                                 c="Gray",
                                 edgecolor="Black")
 
@@ -373,16 +386,21 @@ def visualize_cone_arrays(cfg):
                    markerfacecolor=c,
                    markeredgecolor=c) for c in colors
         ]
-        labels = ['GT Blue Cone', 'LiDAR Cone', 'GT Yellow Cone']
+
+        labels = [
+            'GT Blue Cone',
+            '{} Cone'.format(pipeline_label_dict[cfg.pipeline]),
+            'GT Yellow Cone'
+        ]
         ax1_1.legend(circles, labels)
 
-        # Find index at which to split the lidar cone array path
+        # Find index at which to split the cone array path
         KEYWORD = "data"
         i = key.find(KEYWORD)
         i += len(KEYWORD) + 1
 
-        ax1_1.set_title("BEV: " +
-                        key[i:].replace("lidar_cone_arrays_filtered", "..."))
+        ax1_1.set_title("BEV: " + key[i:].replace(
+            "{}_cone_arrays_filtered".format(cfg.pipeline), "..."))
         ax1_1.set_xlabel("x/m")
         ax1_1.set_ylabel("y/m")
         ax1_1.set_xticks(xticks)
@@ -406,7 +424,8 @@ def calculate_metrics(cfg):
     # Loading of ground truth and predicted cone arrays + bounding boxes
     if cfg.cached_data:
         try:
-            with open("lidar_cone_arrays_dict.pkl", "rb") as f:
+            with open("{}_cone_arrays_dict.pkl".format(cfg.pipeline),
+                      "rb") as f:
                 cone_arrays_dict = pickle.load(f)
         except:
             print("No cache file")
@@ -429,12 +448,12 @@ def calculate_metrics(cfg):
     # and store the distance error
     for key, data_item in cone_arrays_dict.items():
         gt_cone_array = data_item["gt"]
-        lidar_cone_array = data_item["lidar"]
+        cone_array = data_item[cfg.pipeline]
 
         gt_cone_tree = cKDTree(gt_cone_array[:, 1:])
 
-        for lidar_cone in lidar_cone_array:
-            dd, ii = gt_cone_tree.query(lidar_cone, distance_upper_bound=2)
+        for cone in cone_array:
+            dd, ii = gt_cone_tree.query(cone, distance_upper_bound=2)
             if ii != gt_cone_tree.n:
                 gt_cone = gt_cone_array[ii]
                 dist_gt_origin = np.linalg.norm(gt_cone)
@@ -472,7 +491,8 @@ def calculate_metrics(cfg):
             num_predictions,
             color='#444444',
             label='Number of Predictions')
-    ax1.set_title("3D Cone Prediction Evaluation")
+    ax1.set_title("{}: 3D Cone Prediction Evaluation".format(
+        pipeline_label_dict[cfg.pipeline]))
     ax1.legend()
     ax2.bar(x_dist_ranges,
             avg_pos_error,
