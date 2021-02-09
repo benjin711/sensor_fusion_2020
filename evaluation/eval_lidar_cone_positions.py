@@ -24,7 +24,7 @@ def command_line_parser():
     parser.add_argument(
         '-b',
         '--data',
-        default='/media/benjin/Samsung_T5/AMZ/sensor_fusion_data',
+        default='/media/benjin/Samsung_T5/AMZ/sf_project/sensor_fusion_data',
         type=str,
         help='Specify local path of the sensor_fusion_data folder')
 

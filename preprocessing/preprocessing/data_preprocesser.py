@@ -873,9 +873,9 @@ class DataPreprocesser:
 
             pbar.close()
 
-    def match_lidar_cone_arrays(self):
+    def match_cone_arrays(self, pipeline):
         # Pathing
-        folder_name = "lidar_cone_arrays"
+        folder_name = "{}_cone_arrays".format(pipeline)
         src_folder = os.path.join(self.data_folder_path, folder_name)
         dst_folder = os.path.join(self.data_folder_path,
                                   folder_name + "_filtered")
@@ -884,7 +884,7 @@ class DataPreprocesser:
             print("The src folder {} could not be found!".format(src_folder))
             sys.exit()
 
-        # Create a filtered folder to copy the matched lidar cone arrays to
+        # Create a filtered folder to copy the matched cone arrays to
         if os.path.exists(dst_folder):
             print(
                 "The folder {}_filtered exist already indicating that the data has already been matched!"
@@ -895,76 +895,82 @@ class DataPreprocesser:
             shutil.rmtree(dst_folder)
         os.makedirs(dst_folder)
 
-        lidar_cone_array_timestamps = get_lidar_cone_array_timestamps(
-            self.data_folder_path)[folder_name]
-        lidar_cone_array_files = get_lidar_cone_array_files(
-            self.data_folder_path)
+        cone_array_timestamps = get_cone_array_timestamps(
+            self.data_folder_path, pipeline)[folder_name]
+        cone_array_files = get_cone_array_files(self.data_folder_path,
+                                                pipeline)
 
         reference_timestamps = self.reference_timestamps if self.reference_timestamps else get_reference_timestamps(
             self.data_folder_path)["reference_timestamps"]
 
-        # 1) For every reference timestamp, chose the closest lidar cone array timestamp
-        # If none is available put a -1
-        # Result is an array with index elements that indicate which timestamp + cone array tuple belong to which reference timestamp
-        # For all cone arrays the original time stamp and the reference time stamp is needed
-        indices = []
+        # Associate a cone array and timestamp to each reference timestamp
+        # Use cone array timestamp and reference timestamp to transform cone array to the reference egomotion frames
 
-        for counter, reference_timestamp in enumerate(reference_timestamps):
-            timediff = lidar_cone_array_timestamps - reference_timestamp
+        m_reference_timestamps = []  # matched
+        m_cone_array_timestamps = []  # matched
+        m_h_cone_arrays_src = np.zeros((0, 4, 0))  # matched, homogeneous
+        no_match_idx = []
+
+        for ref_t_idx, reference_timestamp in enumerate(reference_timestamps):
+            timediff = cone_array_timestamps - reference_timestamp
             timediff[timediff < 0] = np.inf
 
             idx = timediff.argmin()
 
-            if timediff[idx] > 0.1:
-                indices.append(-1)
-                continue
+            if timediff[idx] < 0.1:
+                m_reference_timestamps.append(reference_timestamp)
+                m_cone_array_timestamps.append(cone_array_timestamps[idx])
+                m_cone_array = np.fromfile(cone_array_files[idx]).reshape(
+                    -1, 3).T
+                num_cones = m_cone_array.shape[1]
+                m_h_cone_array = np.vstack(
+                    (m_cone_array, np.ones((1, num_cones))))
+
+                # Extend third dimension of m_h_cone_arrays if needed
+                if m_h_cone_arrays_src.shape[2] < num_cones:
+                    diff = num_cones - m_h_cone_arrays_src.shape[2]
+                    zeros = np.zeros((m_h_cone_arrays_src.shape[0], 4, diff))
+                    m_h_cone_arrays_src = np.concatenate(
+                        (m_h_cone_arrays_src, zeros), axis=2)
+
+                # Extend first dimension of m_h_cone_arrays by one
+                zeros = np.zeros((1, 4, m_h_cone_arrays_src.shape[2]))
+                m_h_cone_arrays_src = np.concatenate(
+                    (m_h_cone_arrays_src, zeros), axis=0)
+
+                m_h_cone_arrays_src[-1, :, :num_cones] = m_h_cone_array
             else:
-                indices.append(idx)
+                no_match_idx.append(ref_t_idx)
 
-        # src timestamps: list with src timestamps and -1 at an idx where there is no proper src timestamp
-        # dst timestamps: reference timestamps
-        # Ts: transformations, -1 at an idx where there is no proper data
-        # cone_arrays: read every cone array, put into format with homogenous coordinates
-        # multiply cones with transformations,
-        # for loop: through the new cones, write transformed cones into new folder also write reference timestamps there
-
-        indices = np.array(indices)
-        pos_indices = indices[indices > 0]
-        src_timestamps = -1 * np.ones((len(reference_timestamps)))
-        src_timestamps[indices > 0] = lidar_cone_array_timestamps[pos_indices]
-        dst_timestamps = np.array(reference_timestamps)
-        Ts = np.zeros((len(reference_timestamps), 4, 4))
-        timestamps_tuple = np.vstack(
-            (src_timestamps[indices > 0], dst_timestamps[indices > 0])).T
-        Ts[indices > 0] = self.egomotion_compensator.get_transformations(
+        timestamps_tuple = np.vstack((np.array(m_cone_array_timestamps),
+                                      np.array(m_reference_timestamps))).T
+        Ts = self.egomotion_compensator.get_transformations(
             timestamps_tuple, src_frame="egomotion", dst_frame="egomotion")
-        MAX_NUM_CONES = 100
-        h_lidar_cone_arrays_src = np.zeros(
-            (lidar_cone_array_timestamps.shape[0], 4, MAX_NUM_CONES))
-        h_lidar_cone_arrays_dst = np.zeros(
-            (len(reference_timestamps), 4, MAX_NUM_CONES))
-        for idx, lidar_cone_array_file in enumerate(lidar_cone_array_files):
-            lidar_cone_array = np.fromfile(lidar_cone_array_file).reshape(
-                -1, 3)
-            num_cones = lidar_cone_array.shape[0]
-            h_lidar_cone_array = np.hstack(
-                (lidar_cone_array, np.ones((num_cones, 1))))
-            h_lidar_cone_arrays_src[idx, :, :num_cones] = h_lidar_cone_array.T
 
-        h_lidar_cone_arrays_dst[indices > 0] = Ts[
-            indices > 0] @ h_lidar_cone_arrays_src[pos_indices]
+        m_h_t_cone_arrays_dst = Ts @ m_h_cone_arrays_src  # matched, homogeneous, transformed
 
         # Writing transformed cone arrays to file
-        for idx in range(h_lidar_cone_arrays_dst.shape[0]):
-            h_lidar_cone_array, mask = h_lidar_cone_arrays_dst[
-                idx, :3], h_lidar_cone_arrays_dst[idx, 3].astype(np.bool)
-            lidar_cone_array = (h_lidar_cone_array.T)[mask]
+        offset = 0
+        for idx in range(reference_timestamps.shape[0]):
+
+            # If there is no data matched to the reference_timestamp
+            # skip this iteration
+            if idx in no_match_idx:
+                offset += 1
+                continue
+
+            array_idx = idx - offset
+
+            m_t_cone_array = m_h_t_cone_arrays_dst[array_idx, :
+                                                   3]  # matched, transformed
+            mask = m_h_t_cone_arrays_dst[array_idx, 3].astype(np.bool)
+            m_t_cone_array = (m_t_cone_array.T)[mask]
 
             file_path = os.path.join(dst_folder, str(idx).zfill(8) + ".bin")
 
-            if lidar_cone_array.size == 0:
+            if m_t_cone_array.size == 0:
                 pass
             else:
-                lidar_cone_array.tofile(file_path)
+                m_t_cone_array.tofile(file_path)
 
-        write_reference_timestamps(dst_folder, self.reference_timestamps)
+        write_reference_timestamps(dst_folder, reference_timestamps)
