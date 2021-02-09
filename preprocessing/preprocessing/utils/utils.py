@@ -191,7 +191,6 @@ def load_mrh_transform(yaml_path, invert=False):
     return T
 
 
-
 def load_stereo_calib(camera_fn, stereo_fn):
 
     if not os.path.exists(camera_fn) or not os.path.exists(stereo_fn):
@@ -391,24 +390,25 @@ def project_points_to_pixels(pcd, R, t, K, img_shape):
     return pixels, pixel_filter
 
 
-def get_lidar_cone_array_timestamps(data_folder_path):
+def get_cone_array_timestamps(data_folder_path, pipeline):
     timestamp_filepaths_dict = {
-        "lidar_cone_arrays":
-        os.path.join(data_folder_path, "lidar_cone_arrays/timestamps.txt")
+        "{}_cone_arrays".format(pipeline):
+        os.path.join(data_folder_path,
+                     "{}_cone_arrays/timestamps.txt".format(pipeline))
     }
 
     return read_timestamps(timestamp_filepaths_dict)
 
 
-def get_lidar_cone_array_files(data_folder_path):
+def get_cone_array_files(data_folder_path, pipeline):
 
-    lidar_cone_array_folder = os.path.join(data_folder_path,
-                                           "lidar_cone_arrays")
-    lidar_cone_array_files = os.listdir(lidar_cone_array_folder)
-    lidar_cone_array_files.remove("timestamps.txt")
-    lidar_cone_array_files = sorted([
-        os.path.join(lidar_cone_array_folder, lidar_cone_array_file)
-        for lidar_cone_array_file in lidar_cone_array_files
+    cone_array_folder = os.path.join(data_folder_path,
+                                           "{}_cone_arrays".format(pipeline))
+    cone_array_files = os.listdir(cone_array_folder)
+    cone_array_files.remove("timestamps.txt")
+    cone_array_files = sorted([
+        os.path.join(cone_array_folder, cone_array_file)
+        for cone_array_file in cone_array_files
     ])
 
-    return lidar_cone_array_files
+    return cone_array_files
