@@ -57,7 +57,10 @@ def main():
             data_preprocesser_instance.generate_dim()
 
         if cfg.match_lidar_cone_arrays:
-            data_preprocesser_instance.match_lidar_cone_arrays()
+            data_preprocesser_instance.match_cone_arrays("lidar")
+
+        if cfg.match_lm_cone_arrays:
+            data_preprocesser_instance.match_cone_arrays("lm")
 
 
 if __name__ == "__main__":

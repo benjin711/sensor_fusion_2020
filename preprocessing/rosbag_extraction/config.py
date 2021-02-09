@@ -54,8 +54,14 @@ def command_line_parser():
         '--topics',
         type=str,
         nargs='+',
-        default=["/sensors/fw_lidar/point_cloud_raw", "/sensors/mrh_lidar/point_cloud_raw", "/sensors/right_camera/image_color",
-                 "/sensors/forward_camera/image_color", "/sensors/left_camera/image_color", "/tf", "/pilatus_can/GNSS", "/perception/lidar/cone_array"],
+        default=[
+            "/sensors/fw_lidar/point_cloud_raw",
+            "/sensors/mrh_lidar/point_cloud_raw",
+            "/sensors/right_camera/image_color",
+            "/sensors/forward_camera/image_color",
+            "/sensors/left_camera/image_color", "/tf", "/pilatus_can/GNSS",
+            "/perception/lidar/cone_array", "/estimation/local_map"
+        ],
         help='Specify the topics that should be extracted from the rosbag')
 
     cfg = parser.parse_args()
