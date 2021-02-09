@@ -51,7 +51,8 @@ class RosbagExtractor:
             "/sensors/left_camera/image_color": "left_camera",
             "/tf": "tf",
             "/pilatus_can/GNSS": "gnss",
-            "/perception/lidar/cone_array": "lidar_cone_arrays"
+            "/perception/lidar/cone_array": "lidar_cone_arrays",
+            "/estimation/local_map": "lm_cone_arrays"
         }
 
         # Create a dictionary to correspond topic names to data types
@@ -74,10 +75,12 @@ class RosbagExtractor:
 
             for topic in topics:
                 topic_folder_path = os.path.join(
-                    self.data_folder, self.topic_name_to_folder_name_dict[topic])
+                    self.data_folder,
+                    self.topic_name_to_folder_name_dict[topic])
                 if os.path.exists(topic_folder_path):
                     print(
-                        "Reextracting msgs of the {} topic from rosbag. Cleaning old data.".format(topic))
+                        "Reextracting msgs of the {} topic from rosbag. Cleaning old data."
+                        .format(topic))
                     shutil.rmtree(topic_folder_path)
 
         else:
@@ -115,7 +118,7 @@ class RosbagExtractor:
             poses, timestamps = self.extract_pilatus_can_gnss(topic)
 
         elif msg_type == "autonomous_msgs/ConeArray":
-            print("Extracting lidar pipeline cone arrays")
+            print("Extracting cone arrays")
             cone_arrays, timestamps = self.extract_perception_msgs_cone_array(
                 topic)
 
@@ -300,8 +303,10 @@ class RosbagExtractor:
             INS_pitch = msg.INS_pitch
             dual_pitch = msg.dual_pitch
             dual_heading = msg.dual_heading
-            curr_pose = [longitude, latitude, height, INS_pitch, INS_roll, dual_pitch,
-                         dual_heading]
+            curr_pose = [
+                longitude, latitude, height, INS_pitch, INS_roll, dual_pitch,
+                dual_heading
+            ]
 
             if self.moving_only_flag:
                 if timestamp < self.timestamp_started_driving:
@@ -344,7 +349,7 @@ class RosbagExtractor:
 
         counter = 0
         timestamps = []
-        lidar_cone_arrays = []
+        cone_arrays = []
 
         for _, msg, _ in self.bag.read_messages(topics=[topic]):
 
@@ -352,23 +357,24 @@ class RosbagExtractor:
                 str(msg.header.stamp.secs),
                 str(msg.header.stamp.nsecs).zfill(9)))
 
-            lidar_cone_array = np.zeros((0, 3))
+            cone_array = np.zeros((0, 3))
             for cone in msg.cones:
                 cone_position = np.array(
-                    [cone.position.x, cone.position.y, cone.position.z]).reshape(1, 3)
-                lidar_cone_array = np.vstack((
-                    lidar_cone_array, cone_position))
+                    [cone.position.x, cone.position.y,
+                     cone.position.z]).reshape(1, 3)
+                cone_array = np.vstack((cone_array, cone_position))
 
             if self.moving_only_flag:
                 if timestamp < self.timestamp_started_driving or timestamp > self.timestamp_stopped_driving:
                     continue
 
-            lidar_cone_array_path = os.path.join(data_dir,
-                                                 str(counter).zfill(8) + '.bin')
-            write_cone_array(lidar_cone_array_path, lidar_cone_array)
+            cone_array_path = os.path.join(
+                data_dir,
+                str(counter).zfill(8) + '.bin')
+            write_cone_array(cone_array_path, cone_array)
 
             timestamps.append(timestamp)
-            lidar_cone_arrays.append(lidar_cone_array)
+            cone_arrays.append(cone_array)
             pbar.update(1)
             counter += 1
 
@@ -378,4 +384,4 @@ class RosbagExtractor:
             filehandle.writelines("{:.6f}\n".format(timestamp)
                                   for timestamp in timestamps)
 
-        return lidar_cone_arrays, timestamps
+        return cone_arrays, timestamps
